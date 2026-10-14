@@ -22,8 +22,10 @@ export const IPC_CHANNELS = {
   SINGER_LIST: 'singer:list',
 
   // Cola
+  QUEUE_GET: 'queue:get',
   QUEUE_ADD: 'queue:add',
   QUEUE_REORDER: 'queue:reorder',
+  QUEUE_UNDO_REORDER: 'queue:undoReorder',
   QUEUE_TRANSITION: 'queue:transition',
 
   // Reproductor

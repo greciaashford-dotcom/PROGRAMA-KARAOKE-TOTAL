@@ -6,6 +6,8 @@ import {
   SettingsRepository,
   SessionRepository,
   MediaRepository,
+  SingerRepository,
+  QueueRepository,
   KaraokeDatabase,
 } from '@karaoke/database';
 import { MediaFolderWatcher } from '@karaoke/media-indexer';
@@ -80,6 +82,18 @@ export class AppLifecycle {
     const settingsRepo = new SettingsRepository(this.db);
     const sessionRepo = new SessionRepository(this.db);
     const mediaRepo = new MediaRepository(this.db);
+    const singerRepo = new SingerRepository(this.db);
+    const queueRepo = new QueueRepository(this.db);
+
+    // Recuperación resiliente al iniciar:
+    // Si había una sesión abierta, reconciliar la cola (marcar estados en reproducción como READY sin reproducir automáticamente)
+    const latestActiveSession = sessionRepo.getLatestActiveSession();
+    if (latestActiveSession) {
+      const { recoveredCount } = queueRepo.recoverSessionQueue(latestActiveSession.id);
+      if (recoveredCount > 0) {
+        console.log(`[Recuperación] Se reconciliaron ${recoveredCount} canciones interrumpidas tras el reinicio.`);
+      }
+    }
 
     // Reconstruir watchers para todas las carpetas autorizadas y habilitadas
     const folders = mediaRepo.listFolders();
@@ -104,6 +118,8 @@ export class AppLifecycle {
       settingsRepo,
       sessionRepo,
       mediaRepo,
+      singerRepo,
+      queueRepo,
       watcher: this.watcher,
       getWindow: () => this.operatorWindow,
     });

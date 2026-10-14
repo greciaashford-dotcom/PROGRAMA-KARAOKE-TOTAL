@@ -29,3 +29,13 @@
 - **Contexto:** Si el operador corrige un título o desconecta temporalmente una unidad externa, los datos corregidos o las canciones en cola no deben perderse.
 - **Decisión:** Las canciones corregidas se marcan con `metadata_source = 'MANUAL'` y no son sobrescritas en reescaneos. Los archivos no observados pasan a `status = 'MISSING'` y nunca se eliminan físicamente ni de la base de datos de forma automática.
 - **Consecuencias:** Resiliencia operativa absoluta ante unidades externas o desconexiones temporales en pleno directo.
+
+## ADR-007: Máquina de Estados Estricta y Regla de Reproducción Única
+- **Contexto:** En un directo nunca pueden coexistir dos pistas en estado `PLAYING`, ni pueden ocurrir transiciones incoherentes (ej. pasar de `QUEUED` directamente a `COMPLETED`).
+- **Decisión:** Validar cada transición con `isValidQueueTransition` dentro de una transacción atómica SQLite que verifica que no haya otro elemento `PLAYING`. Cada transición genera un registro inmutable en `queue_events`.
+- **Consecuencias:** Integridad del flujo en directo y trazabilidad completa de cada actuación.
+
+## ADR-008: Reconciliación Pasiva tras Reinicio
+- **Contexto:** Si la aplicación se cierra inesperadamente mientras una canción estaba en reproducción, al reabrir no debe reproducirse automáticamente ni asumir que la canción sigue sonando.
+- **Decisión:** Al iniciar, cualquier elemento que estuviera en `PLAYING` se transiciona a `READY` y se mantiene la cola intacta sin disparar reproducción automática.
+- **Consecuencias:** Cero sorpresas de audio para el operador al arrancar la consola tras un reinicio.

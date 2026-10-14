@@ -3,26 +3,41 @@ import { Header } from './components/Header.js';
 import { SettingsModal } from './components/SettingsModal.js';
 import { SessionBanner } from './components/SessionBanner.js';
 import { CatalogPanel } from './components/CatalogPanel.js';
+import { QueuePanel } from './components/QueuePanel.js';
 import { FolderManagerModal } from './components/FolderManagerModal.js';
 import { EditSongModal } from './components/EditSongModal.js';
 import { SongDetailsModal } from './components/SongDetailsModal.js';
+import { AddToQueueModal } from './components/AddToQueueModal.js';
+import { AddSingerModal } from './components/AddSingerModal.js';
 import {
   SettingsDTO,
   UpdateSettingsDTO,
   SessionDTO,
   MediaFolderDTO,
   SongDTO,
+  QueueItemDTO,
+  SingerDTO,
+  QueueStatus,
 } from '@karaoke/contracts';
-import { AlertOctagon, ListOrdered, Play } from 'lucide-react';
+import { AlertOctagon, Play } from 'lucide-react';
 
 export const App: React.FC = () => {
   const [settings, setSettings] = useState<SettingsDTO | null>(null);
   const [currentSession, setCurrentSession] = useState<SessionDTO | null>(null);
   const [folders, setFolders] = useState<MediaFolderDTO[]>([]);
+  const [queue, setQueue] = useState<QueueItemDTO[]>([]);
+  const [singers, setSingers] = useState<SingerDTO[]>([]);
+  const [previousOrder, setPreviousOrder] = useState<string[] | null>(null);
+
+  // Modales
   const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
   const [isFolderManagerOpen, setIsFolderManagerOpen] = useState<boolean>(false);
   const [editingSong, setEditingSong] = useState<SongDTO | null>(null);
   const [detailsSong, setDetailsSong] = useState<SongDTO | null>(null);
+  const [addingToQueueSong, setAddingToQueueSong] = useState<SongDTO | null>(null);
+  const [isAddSingerOpen, setIsAddSingerOpen] = useState<boolean>(false);
+
+  // Escaneo en vivo
   const [scanProgress, setScanProgress] = useState<{
     folderId: string;
     discovered: number;
@@ -31,14 +46,31 @@ export const App: React.FC = () => {
     status: string;
     currentFile?: string;
   } | null>(null);
+
   const [loading, setLoading] = useState<boolean>(true);
-  const [notification, setNotification] = useState<string>('Catálogo local listo.');
+  const [notification, setNotification] = useState<string>('Consola lista para directo.');
 
   const refreshFolders = async () => {
     if (!window.karaokeAPI) return;
     const res = await window.karaokeAPI.listFolders();
     if (res.success) {
       setFolders(res.data);
+    }
+  };
+
+  const refreshQueue = async (sessionId: string) => {
+    if (!window.karaokeAPI) return;
+    const res = await window.karaokeAPI.getQueue(sessionId);
+    if (res.success) {
+      setQueue(res.data);
+    }
+  };
+
+  const refreshSingers = async (sessionId: string) => {
+    if (!window.karaokeAPI) return;
+    const res = await window.karaokeAPI.listSingers(sessionId);
+    if (res.success) {
+      setSingers(res.data);
     }
   };
 
@@ -52,13 +84,15 @@ export const App: React.FC = () => {
           }
 
           const sessionRes = await window.karaokeAPI.getCurrentSession();
-          if (sessionRes.success) {
+          if (sessionRes.success && sessionRes.data) {
             setCurrentSession(sessionRes.data);
+            await refreshQueue(sessionRes.data.id);
+            await refreshSingers(sessionRes.data.id);
           }
 
           await refreshFolders();
 
-          // Suscribirse a progreso de escaneo
+          // Suscribirse a eventos de escaneo
           window.karaokeAPI.onScanProgress((payload: unknown) => {
             const p = payload as {
               folderId: string;
@@ -76,6 +110,11 @@ export const App: React.FC = () => {
               setNotification('Escaneo cancelado por el operador.');
               refreshFolders();
             }
+          });
+
+          // Suscribirse a actualizaciones de cola
+          window.karaokeAPI.onQueueUpdated((payload) => {
+            setQueue(payload.items);
           });
         }
       } catch (err) {
@@ -103,6 +142,8 @@ export const App: React.FC = () => {
     if (res.success) {
       setCurrentSession(res.data);
       setNotification(`Sesión "${res.data.name}" abierta.`);
+      await refreshQueue(res.data.id);
+      await refreshSingers(res.data.id);
     }
   };
 
@@ -111,6 +152,8 @@ export const App: React.FC = () => {
     const res = await window.karaokeAPI.closeSession(sessionId);
     if (res.success) {
       setCurrentSession(null);
+      setQueue([]);
+      setSingers([]);
       setNotification('Sesión finalizada.');
     }
   };
@@ -122,7 +165,6 @@ export const App: React.FC = () => {
       const folder = res.data;
       setNotification(`Carpeta "${folder.displayName}" autorizada.`);
       await refreshFolders();
-      // Iniciar escaneo automático inicial
       await window.karaokeAPI.scanFolder(folder.id);
     }
   };
@@ -166,6 +208,99 @@ export const App: React.FC = () => {
     }
   };
 
+  // Cantantes
+  const handleCreateSinger = async (displayName: string, tableOrLocation?: string, notes?: string): Promise<SingerDTO | null> => {
+    if (!window.karaokeAPI || !currentSession) return null;
+    const res = await window.karaokeAPI.createSinger({
+      sessionId: currentSession.id,
+      displayName,
+      tableOrLocation,
+      notes,
+    });
+    if (res.success) {
+      await refreshSingers(currentSession.id);
+      setNotification(`Cantante "${displayName}" registrado.`);
+      return res.data;
+    }
+    return null;
+  };
+
+  // Cola
+  const handleAddToQueue = async (songId: string, singerId: string, keyShift: number, tempoPercent: number) => {
+    if (!window.karaokeAPI || !currentSession) {
+      alert('Debes abrir una sesión antes de añadir canciones a la cola.');
+      return;
+    }
+
+    const res = await window.karaokeAPI.addToQueue({
+      sessionId: currentSession.id,
+      songId,
+      singerId,
+      keyShift,
+      tempoPercent,
+    });
+
+    if (res.success) {
+      setNotification(`Canción añadida al turno #${res.data.position}.`);
+      await refreshQueue(currentSession.id);
+    } else {
+      alert(res.error.message);
+    }
+  };
+
+  const handleMoveItem = async (index: number, direction: 'UP' | 'DOWN') => {
+    if (!window.karaokeAPI || !currentSession) return;
+    const targetIndex = direction === 'UP' ? index - 1 : index + 1;
+    if (targetIndex < 0 || targetIndex >= queue.length) return;
+
+    const newOrder = [...queue];
+    const item = newOrder[index]!;
+    newOrder.splice(index, 1);
+    newOrder.splice(targetIndex, 0, item);
+
+    const orderedIds = newOrder.map((i) => i.id);
+    const res = await window.karaokeAPI.reorderQueue({
+      sessionId: currentSession.id,
+      orderedItemIds: orderedIds,
+    });
+
+    if (res.success) {
+      setPreviousOrder(res.data.previousOrder);
+      setNotification('Orden de la cola actualizado.');
+      await refreshQueue(currentSession.id);
+    }
+  };
+
+  const handleUndoReorder = async () => {
+    if (!window.karaokeAPI || !currentSession || !previousOrder) return;
+    const res = await window.karaokeAPI.undoReorder({
+      sessionId: currentSession.id,
+      previousOrderedItemIds: previousOrder,
+    });
+
+    if (res.success) {
+      setPreviousOrder(null);
+      setNotification('Orden anterior restaurado.');
+      await refreshQueue(currentSession.id);
+    }
+  };
+
+  const handleTransitionItem = async (itemId: string, nextStatus: QueueStatus, reason?: string) => {
+    if (!window.karaokeAPI || !currentSession) return;
+    const res = await window.karaokeAPI.transitionQueue({
+      queueItemId: itemId,
+      nextStatus,
+      failureReason: reason,
+    });
+
+    if (res.success) {
+      setNotification(`Turno #${res.data.position} cambiado a ${nextStatus}.`);
+      await refreshQueue(currentSession.id);
+    } else {
+      alert(res.error.message);
+    }
+  };
+
   const handleEmergencyStop = () => {
     setNotification('¡PARADA DE EMERGENCIA ACTIVADA!');
   };
@@ -203,48 +338,30 @@ export const App: React.FC = () => {
       </div>
 
       <main className="main-grid">
-        {/* Panel 1: Catálogo Local con búsqueda y carpetas */}
+        {/* Panel 1: Catálogo Local */}
         <CatalogPanel
           folders={folders}
           onOpenFolderManager={() => setIsFolderManagerOpen(true)}
           onEditSong={(song) => setEditingSong(song)}
           onViewDetails={(song) => setDetailsSong(song)}
+          onAddToQueue={(song) => {
+            if (!currentSession) {
+              alert('Debes abrir una sesión antes de asignar canciones a cantantes.');
+              return;
+            }
+            setAddingToQueueSong(song);
+          }}
           scanProgress={scanProgress}
         />
 
         {/* Panel 2: Cola de Actuaciones */}
-        <section className="panel" aria-label="Cola de cantantes">
-          <div className="panel-header">
-            <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <ListOrdered size={18} color="var(--accent-warm)" />
-              Cola de Actuaciones
-            </span>
-            <span style={{ fontSize: '13px', color: 'var(--text-muted)' }}>0 en espera</span>
-          </div>
-
-          <div className="panel-content">
-            <div
-              style={{
-                flex: 1,
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                justifyContent: 'center',
-                textAlign: 'center',
-                color: 'var(--text-secondary)',
-                border: '1px dashed var(--border-strong)',
-                borderRadius: '6px',
-                padding: '24px',
-              }}
-            >
-              <ListOrdered size={40} color="var(--border-strong)" style={{ marginBottom: '12px' }} />
-              <strong style={{ color: 'var(--text-primary)' }}>Cola vacía</strong>
-              <p style={{ fontSize: '14px', marginTop: '6px' }}>
-                La máquina de estados de cantantes y asignación de canciones se implementará en la Fase 3.
-              </p>
-            </div>
-          </div>
-        </section>
+        <QueuePanel
+          queue={queue}
+          hasUndo={!!previousOrder}
+          onUndoReorder={handleUndoReorder}
+          onMoveItem={handleMoveItem}
+          onTransitionItem={handleTransitionItem}
+        />
 
         {/* Panel 3: Reproducción Actual */}
         <section className="panel" aria-label="Control de reproducción actual">
@@ -337,6 +454,21 @@ export const App: React.FC = () => {
         onClose={() => setDetailsSong(null)}
         onLocateInExplorer={handleLocateInExplorer}
         onReanalyze={handleReanalyze}
+      />
+
+      <AddToQueueModal
+        song={addingToQueueSong}
+        singers={singers}
+        isOpen={!!addingToQueueSong}
+        onClose={() => setAddingToQueueSong(null)}
+        onAddToQueue={handleAddToQueue}
+        onCreateSinger={async (name, table) => handleCreateSinger(name, table)}
+      />
+
+      <AddSingerModal
+        isOpen={isAddSingerOpen}
+        onClose={() => setIsAddSingerOpen(false)}
+        onAddSinger={handleCreateSinger}
       />
     </div>
   );

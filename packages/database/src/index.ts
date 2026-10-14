@@ -4,3 +4,5 @@ export * from './migrator.js';
 export * from './repositories/settings-repository.js';
 export * from './repositories/session-repository.js';
 export * from './repositories/media-repository.js';
+export * from './repositories/singer-repository.js';
+export * from './repositories/queue-repository.js';

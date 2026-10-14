@@ -7,6 +7,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Music,
+  Plus,
 } from 'lucide-react';
 import { SongDTO, MediaFolderDTO, MediaStatus } from '@karaoke/contracts';
 
@@ -15,6 +16,7 @@ interface CatalogPanelProps {
   onOpenFolderManager: () => void;
   onEditSong: (song: SongDTO) => void;
   onViewDetails: (song: SongDTO) => void;
+  onAddToQueue: (song: SongDTO) => void;
   scanProgress: {
     folderId: string;
     discovered: number;
@@ -30,6 +32,7 @@ export const CatalogPanel: React.FC<CatalogPanelProps> = ({
   onOpenFolderManager,
   onEditSong,
   onViewDetails,
+  onAddToQueue,
   scanProgress,
 }) => {
   const [songs, setSongs] = useState<SongDTO[]>([]);
@@ -282,6 +285,14 @@ export const CatalogPanel: React.FC<CatalogPanelProps> = ({
                   </td>
                   <td style={{ padding: '10px 16px', textAlign: 'right' }}>
                     <div style={{ display: 'inline-flex', gap: '4px' }}>
+                      <button
+                        className="btn btn-icon btn-primary"
+                        onClick={() => onAddToQueue(song)}
+                        title="Añadir canción a la cola de cantantes"
+                        style={{ width: '32px', height: '32px', minWidth: '32px', minHeight: '32px' }}
+                      >
+                        <Plus size={16} />
+                      </button>
                       <button
                         className="btn btn-icon"
                         onClick={() => onEditSong(song)}

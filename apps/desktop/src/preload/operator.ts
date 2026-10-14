@@ -4,6 +4,12 @@ import {
   UpdateSettingsDTO,
   CatalogQuery,
   UpdateSongDTO,
+  AddToQueueDTO,
+  ReorderQueueDTO,
+  UndoReorderDTO,
+  QueueTransitionDTO,
+  CreateSingerDTO,
+  QueueItemDTO,
 } from '@karaoke/contracts';
 import { KaraokeAPI } from './types.js';
 
@@ -37,12 +43,39 @@ const api: KaraokeAPI = {
   reanalyzeAsset: (mediaAssetId: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.LIBRARY_REANALYZE_ASSET, { mediaAssetId }),
 
+  // Cantantes
+  createSinger: (payload: CreateSingerDTO) =>
+    ipcRenderer.invoke(IPC_CHANNELS.SINGER_CREATE, payload),
+  listSingers: (sessionId: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.SINGER_LIST, { sessionId }),
+
+  // Cola de Reproducción
+  getQueue: (sessionId: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.QUEUE_GET, { sessionId }),
+  addToQueue: (payload: AddToQueueDTO) =>
+    ipcRenderer.invoke(IPC_CHANNELS.QUEUE_ADD, payload),
+  reorderQueue: (payload: ReorderQueueDTO) =>
+    ipcRenderer.invoke(IPC_CHANNELS.QUEUE_REORDER, payload),
+  undoReorder: (payload: UndoReorderDTO) =>
+    ipcRenderer.invoke(IPC_CHANNELS.QUEUE_UNDO_REORDER, payload),
+  transitionQueue: (payload: QueueTransitionDTO) =>
+    ipcRenderer.invoke(IPC_CHANNELS.QUEUE_TRANSITION, payload),
+
   // Suscripciones a eventos seguros
   onScanProgress: (callback: (payload: unknown) => void) => {
     const handler = (_event: IpcRendererEvent, payload: unknown) => callback(payload);
     ipcRenderer.on(IPC_CHANNELS.EVENT_SCAN_PROGRESS, handler);
     return () => {
       ipcRenderer.removeListener(IPC_CHANNELS.EVENT_SCAN_PROGRESS, handler);
+    };
+  },
+
+  onQueueUpdated: (callback: (payload: { sessionId: string; items: QueueItemDTO[] }) => void) => {
+    const handler = (_event: IpcRendererEvent, payload: { sessionId: string; items: QueueItemDTO[] }) =>
+      callback(payload);
+    ipcRenderer.on(IPC_CHANNELS.EVENT_QUEUE_UPDATED, handler);
+    return () => {
+      ipcRenderer.removeListener(IPC_CHANNELS.EVENT_QUEUE_UPDATED, handler);
     };
   },
 

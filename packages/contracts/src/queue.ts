@@ -18,6 +18,25 @@ export const QueueStatusSchema = z.enum([
 ]);
 export type QueueStatus = z.infer<typeof QueueStatusSchema>;
 
+export const ALLOWED_QUEUE_TRANSITIONS: Record<QueueStatus, readonly QueueStatus[]> = {
+  QUEUED: ['CALLED', 'PREPARING', 'CANCELLED', 'SKIPPED'] as const,
+  CALLED: ['PREPARING', 'READY', 'SKIPPED', 'CANCELLED'] as const,
+  PREPARING: ['READY', 'PLAYING', 'FAILED', 'CANCELLED'] as const,
+  READY: ['PLAYING', 'FAILED', 'CANCELLED', 'SKIPPED'] as const,
+  PLAYING: ['PAUSED', 'COMPLETED', 'SKIPPED', 'FAILED'] as const,
+  PAUSED: ['PLAYING', 'COMPLETED', 'SKIPPED', 'FAILED'] as const,
+  COMPLETED: [] as const,
+  SKIPPED: ['QUEUED'] as const, // Permite reincorporar a la cola si el cliente regresa
+  CANCELLED: ['QUEUED'] as const,
+  FAILED: ['READY', 'QUEUED'] as const, // Permite reintentar si se resuelve el archivo
+};
+
+export function isValidQueueTransition(current: QueueStatus, next: QueueStatus): boolean {
+  if (current === next) return true;
+  const allowed = ALLOWED_QUEUE_TRANSITIONS[current];
+  return allowed ? allowed.includes(next) : false;
+}
+
 export const SessionDTOSchema = z.object({
   id: z.string().uuid(),
   name: z.string().min(1),
@@ -52,6 +71,7 @@ export const QueueItemDTOSchema = z.object({
   failureReason: z.string().nullable(),
   startedAt: z.string().nullable(),
   completedAt: z.string().nullable(),
+  estimatedWaitMs: z.number().int().nonnegative().optional(),
   song: SongDTOSchema.optional(),
   singer: SingerDTOSchema.optional(),
   createdAt: z.string(),
@@ -61,7 +81,7 @@ export type QueueItemDTO = z.infer<typeof QueueItemDTOSchema>;
 
 export const CreateSingerSchema = z.object({
   sessionId: z.string().uuid(),
-  displayName: z.string().min(1),
+  displayName: z.string().min(1, 'El nombre o alias del cantante es obligatorio'),
   tableOrLocation: z.string().optional(),
   notes: z.string().optional(),
 });
@@ -81,6 +101,12 @@ export const ReorderQueueSchema = z.object({
   orderedItemIds: z.array(z.string().uuid()).min(1),
 });
 export type ReorderQueueDTO = z.infer<typeof ReorderQueueSchema>;
+
+export const UndoReorderSchema = z.object({
+  sessionId: z.string().uuid(),
+  previousOrderedItemIds: z.array(z.string().uuid()).min(1),
+});
+export type UndoReorderDTO = z.infer<typeof UndoReorderSchema>;
 
 export const QueueTransitionSchema = z.object({
   queueItemId: z.string().uuid(),
