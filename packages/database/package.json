@@ -1,0 +1,31 @@
+{
+  "name": "@karaoke/database",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "clean": "node -e \"const fs = require('fs'); fs.rmSync('dist', { recursive: true, force: true });\""
+  },
+  "dependencies": {
+    "@karaoke/contracts": "workspace:*",
+    "better-sqlite3": "^13.0.3",
+    "drizzle-orm": "^0.38.3"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.12",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}

@@ -1,0 +1,33 @@
+{
+  "name": "@karaoke/desktop",
+  "version": "0.1.0",
+  "private": true,
+  "main": "./dist/main/index.js",
+  "scripts": {
+    "dev:vite": "vite",
+    "build:vite": "vite build",
+    "build:main": "tsc -p tsconfig.node.json",
+    "build": "pnpm run build:vite && pnpm run build:main",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.node.json --noEmit",
+    "start": "electron ./dist/main/index.js",
+    "clean": "node -e \"const fs = require('fs'); fs.rmSync('dist', { recursive: true, force: true });\""
+  },
+  "dependencies": {
+    "@karaoke/contracts": "workspace:*",
+    "@karaoke/database": "workspace:*",
+    "better-sqlite3": "^13.0.3",
+    "lucide-react": "^0.468.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.12",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.4",
+    "electron": "^33.2.1",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.3"
+  }
+}

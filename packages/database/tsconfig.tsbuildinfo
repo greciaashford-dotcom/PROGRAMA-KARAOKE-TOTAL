@@ -1,0 +1,1 @@
+{"root":["./src/connection.ts","./src/index.ts","./src/migrator.ts","./src/schema.ts","./src/__tests__/database.test.ts","./src/repositories/session-repository.ts","./src/repositories/settings-repository.ts"],"version":"5.9.3"}

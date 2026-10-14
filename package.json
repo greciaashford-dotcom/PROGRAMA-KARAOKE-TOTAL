@@ -1,0 +1,26 @@
+{
+  "name": "karaoke-total-monorepo",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@12.11.2",
+  "type": "module",
+  "scripts": {
+    "build": "pnpm --filter \"./packages/*\" run build && pnpm --filter \"./apps/*\" run build",
+    "typecheck": "pnpm -r run typecheck",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "clean": "pnpm -r run clean"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "@typescript-eslint/eslint-plugin": "^8.18.1",
+    "@typescript-eslint/parser": "^8.18.1",
+    "eslint": "^9.17.0",
+    "eslint-plugin-react": "^7.37.2",
+    "eslint-plugin-react-hooks": "^5.1.0",
+    "prettier": "^3.4.2",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}
