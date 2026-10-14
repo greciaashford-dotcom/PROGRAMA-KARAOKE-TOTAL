@@ -5,18 +5,22 @@ import {
   runMigrations,
   SettingsRepository,
   SessionRepository,
+  MediaRepository,
   KaraokeDatabase,
 } from '@karaoke/database';
+import { MediaFolderWatcher } from '@karaoke/media-indexer';
 import { Database as DatabaseInstance } from 'better-sqlite3';
 import { registerAllIpcHandlers } from './ipc/index.js';
 import { createOperatorWindow } from './windows/operator-window.js';
 import { setupSecurity } from './security.js';
+import { IPC_CHANNELS } from '@karaoke/contracts';
 
 export class AppLifecycle {
   private static instance: AppLifecycle;
   private db: KaraokeDatabase | null = null;
   private sqlite: DatabaseInstance | null = null;
   private operatorWindow: BrowserWindow | null = null;
+  private watcher: MediaFolderWatcher = new MediaFolderWatcher();
 
   public static getInstance(): AppLifecycle {
     if (!AppLifecycle.instance) {
@@ -26,7 +30,6 @@ export class AppLifecycle {
   }
 
   public async bootstrap(): Promise<void> {
-    // 1. Bloqueo de instancia única
     const gotTheLock = app.requestSingleInstanceLock();
     if (!gotTheLock) {
       console.warn('Ya existe otra instancia en ejecución. Cerrando esta instancia.');
@@ -41,20 +44,15 @@ export class AppLifecycle {
       }
     });
 
-    // 2. Configurar seguridad global (CSP)
     setupSecurity();
-
-    // 3. Inicializar base de datos local y migraciones
     this.initDatabase();
 
-    // 4. Crear ventana principal del operador
     this.operatorWindow = createOperatorWindow();
 
     this.operatorWindow.on('closed', () => {
       this.operatorWindow = null;
     });
 
-    // 5. Manejo de ciclo de vida de la aplicación
     app.on('window-all-closed', () => {
       this.cleanup();
       if (process.platform !== 'darwin') {
@@ -74,24 +72,46 @@ export class AppLifecycle {
     this.sqlite = conn.sqlite;
     this.db = conn.db;
 
-    // Ejecutar migraciones
     const migrationResult = runMigrations(this.sqlite, { dbPath, backupDir });
     console.log(
       `[Base de Datos] Migraciones aplicadas: ${migrationResult.applied.length > 0 ? migrationResult.applied.join(', ') : 'Ninguna nueva'}`,
     );
 
-    // Instanciar repositorios
     const settingsRepo = new SettingsRepository(this.db);
     const sessionRepo = new SessionRepository(this.db);
+    const mediaRepo = new MediaRepository(this.db);
 
-    // Registrar manejadores IPC con validación
+    // Reconstruir watchers para todas las carpetas autorizadas y habilitadas
+    const folders = mediaRepo.listFolders();
+    for (const folder of folders) {
+      if (folder.enabled) {
+        const fullFolder = mediaRepo.getFolderById(folder.id);
+        if (fullFolder?.absolutePath) {
+          this.watcher.watchFolder(folder.id, fullFolder.absolutePath, (event) => {
+            if (this.operatorWindow && !this.operatorWindow.isDestroyed()) {
+              this.operatorWindow.webContents.send(IPC_CHANNELS.EVENT_SCAN_PROGRESS, {
+                folderId: event.folderId,
+                type: event.type,
+                status: 'COMPLETED',
+              });
+            }
+          });
+        }
+      }
+    }
+
     registerAllIpcHandlers({
       settingsRepo,
       sessionRepo,
+      mediaRepo,
+      watcher: this.watcher,
+      getWindow: () => this.operatorWindow,
     });
   }
 
   public cleanup(): void {
+    this.watcher.closeAll();
+
     if (this.sqlite) {
       try {
         console.log('[Base de Datos] Cerrando conexión SQLite de forma segura.');

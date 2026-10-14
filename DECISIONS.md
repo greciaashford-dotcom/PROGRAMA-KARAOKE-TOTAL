@@ -19,3 +19,13 @@
 - **Contexto:** Los errores en IPC no deben provocar caídas silenciosas ni fugas de stack traces técnicos hacia la interfaz.
 - **Decisión:** Todo canal IPC valida sus argumentos de entrada con esquemas Zod y responde con el tipo discriminado `Result<T, AppError>`.
 - **Consecuencias:** La interfaz recibe siempre respuestas predecibles y mensajes comprensibles en español.
+
+## ADR-005: Control de Concurrencia en Escaneo para Hardware i3
+- **Contexto:** El local puede operar en hardware base (Intel Core i3) con bibliotecas de hasta 100.000 archivos. Disparar procesos `ffprobe` ilimitados bloquearía la CPU y provocaría cuelgues.
+- **Decisión:** Limitar la concurrencia a 2 procesos de análisis simultáneos con generadores asíncronos y timeout de 10 segundos por archivo.
+- **Consecuencias:** Escaneo fluido sin congelar la interfaz ni acaparar el sistema operativo.
+
+## ADR-006: Preservación No Destructiva de Metadatos y Archivos Ausentes
+- **Contexto:** Si el operador corrige un título o desconecta temporalmente una unidad externa, los datos corregidos o las canciones en cola no deben perderse.
+- **Decisión:** Las canciones corregidas se marcan con `metadata_source = 'MANUAL'` y no son sobrescritas en reescaneos. Los archivos no observados pasan a `status = 'MISSING'` y nunca se eliminan físicamente ni de la base de datos de forma automática.
+- **Consecuencias:** Resiliencia operativa absoluta ante unidades externas o desconexiones temporales en pleno directo.

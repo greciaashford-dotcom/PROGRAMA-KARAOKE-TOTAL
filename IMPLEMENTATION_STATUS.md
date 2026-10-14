@@ -5,25 +5,39 @@
 | Fase | Descripción | Estado | Pruebas |
 | :--- | :--- | :--- | :--- |
 | **Fase 0** | Arquitectura, Contratos, Diagramas, Riesgos | **Completada y Aprobada** | N/A (Teórica) |
-| **Fase 1** | Base Segura (Monorepo, Electron, Vite, React, SQLite, CSP, IPC) | **Completada** | 9 pasadas / 0 fallidas |
-| **Fase 2** | Biblioteca Local (Carpetas, ffprobe, Watcher, Catálogo, Filtros) | Pendiente de Aprobación | — |
-| **Fase 3** | Sesión y Cola (Cantantes, Turnos, Reordenar, Transiciones) | Pendiente | — |
+| **Fase 1** | Base Segura (Monorepo, Electron, Vite, React, SQLite, CSP, IPC) | **Completada y Verificada** | 9 pasadas / 0 fallidas |
+| **Fase 2** | Biblioteca Local (Carpetas, ffprobe, Watcher, Catálogo, Filtros) | **Completada y Verificada** | 19 pasadas / 0 fallidas |
+| **Fase 3** | Sesión y Cola (Cantantes, Turnos, Reordenar, Transiciones) | Pendiente de Aprobación | — |
 | **Fase 4** | Reproductor (Protocolo Seguro, Rangos de Bytes, Controles) | Pendiente | — |
 | **Fase 5** | Segunda Pantalla (Ventana Pública, Monitor Secundario, Desconexión) | Pendiente | — |
 | **Fase 6** | Empaquetado y Validación (Instalador NSIS, Auditoría) | Pendiente | — |
 
 ---
 
-## Detalle de la Fase 1 — Base Segura
+## Detalle de la Fase 2 — Biblioteca Local
 
 ### Objetivos Completados
-- [x] Monorepo configurado con `pnpm` workspaces (`apps/*`, `packages/*`).
-- [x] Paquete `@karaoke/contracts`: Zod schemas, tipos compartidos, constantes de canales IPC, patrón Result<T, E> y ErrorCode.
-- [x] Paquete `@karaoke/database`: SQLite configurado con `better-sqlite3@13.0.3` (compatible con Node 24 sin necesidad de compilador C++ local), Drizzle ORM, modo WAL, claves foráneas, timeouts y rotación de copias de seguridad.
-- [x] Migrador de base de datos transaccional con versión `0001_initial_schema` que crea todas las tablas e índices del MVP.
-- [x] Repositorios funcionales: `SettingsRepository` y `SessionRepository`.
-- [x] Aplicación `@karaoke/desktop`: Proceso principal de Electron con bloqueo de instancia única (`requestSingleInstanceLock`), ventana del operador con aislamiento estricto (`nodeIntegration: false`, `contextIsolation: true`, `sandbox: true`, `webSecurity: true`).
-- [x] Módulo de seguridad (`security.ts`): CSP estricta aplicada a cabeceras de respuesta, bloqueo de navegación no autorizada (`will-navigate`) y bloqueo de popups (`setWindowOpenHandler`).
-- [x] Preload seguro (`operator.ts`): API mínima expuesta en `window.karaokeAPI` mediante `contextBridge` con tipado estricto.
-- [x] Interfaz de operador en React 18 + Vite: Tema grafito de alto contraste para directo, objetivos táctiles $\ge 44 \times 44$ px, tipografía $\ge 16$ px, reloj local en tiempo real, banner de sesión activa, modal de configuración (volumen y ajustes) y parada de emergencia visible.
-- [x] Verificación de calidad: ESLint flat config (`eslint .`), TypeScript strict typecheck (`pnpm typecheck`), 9 pruebas unitarias automatizadas con Vitest (`pnpm test`), y compilación completa limpia (`pnpm build`).
+- [x] Paquete `@karaoke/media-indexer` implementado con tipado estricto.
+- [x] `security-path.ts`: Validación estricta contra directory traversal (`..`) y detección de symlinks que apunten fuera de la raíz autorizada.
+- [x] `hasher.ts`: Huella digital rápida (fingerprint) basada en tamaño, fecha de modificación y fragmentos extremos (4KB iniciales y finales), evitando leer gigabytes en cada arranque.
+- [x] `parser.ts`: Inferencia heurística de `Artista - Título` a partir de nombres de archivo reales (eliminando pistas numéricas y etiquetas) y normalizador de texto insensible a tildes, mayúsculas y caracteres especiales.
+- [x] `ffprobe.ts`: Binario auxiliar empaquetado para inspección técnica de archivos multimedia. Diagnóstico automático de códecs web soportados (H.264/AAC, WebM/VP8/VP9/Opus, MP3, WAV); formatos no soportados marcados como `INCOMPATIBLE` con explicación clara.
+- [x] `scanner.ts`: Recorrido asíncrono y no bloqueante con generadores de Node.js, control de concurrencia optimizado para equipos i3 (límite de 2 procesos simultáneos), emisión de progreso en tiempo real y soporte de cancelación mediante `AbortSignal`.
+- [x] `watcher.ts`: Monitorización reactiva de cambios en carpetas autorizadas con Chokidar.
+- [x] `MediaRepository` en `@karaoke/database`: Registro y revocación de carpetas, sincronización atómica por lotes en SQLite, preservación de correcciones manuales (`metadata_source = 'MANUAL'`), reconciliación de archivos eliminados marcándolos como `MISSING` (sin borrarlos del disco), y consultas paginadas de alto rendimiento preparadas para catálogos de hasta 100.000 canciones.
+- [x] Canales IPC implementados y validados con Zod:
+  - `library:selectFolder` (diálogo nativo del sistema)
+  - `library:listFolders`
+  - `library:removeFolder`
+  - `library:scanFolder`
+  - `library:cancelScan`
+  - `library:listAssets`
+  - `library:updateSong`
+  - `library:locateInExplorer` (`shell.showItemInFolder` protegido)
+  - `library:reanalyzeAsset`
+- [x] Consola del Operador (UI):
+  - `CatalogPanel`: Tabla paginada y virtualizable, búsqueda en tiempo real con debounce, filtros por carpeta y estado (`AVAILABLE`, `MISSING`, `INCOMPATIBLE`), y barra de progreso real durante el escaneo.
+  - `FolderManagerModal`: Gestión de carpetas autorizadas con acciones de reescaneo y revocación.
+  - `EditSongModal`: Corrección manual de título y artista sin renombrar archivos físicos.
+  - `SongDetailsModal`: Ficha técnica del archivo (códecs, resolución, contenedor, duración, tamaño) con localización en el Explorador de Windows.
+- [x] Pruebas unitarias de path traversal, parser, fingerprinting, scanner y repositorio de medios (19 pruebas en total).

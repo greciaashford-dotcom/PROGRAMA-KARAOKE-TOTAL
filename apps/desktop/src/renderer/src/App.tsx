@@ -2,15 +2,45 @@ import React, { useState, useEffect } from 'react';
 import { Header } from './components/Header.js';
 import { SettingsModal } from './components/SettingsModal.js';
 import { SessionBanner } from './components/SessionBanner.js';
-import { SettingsDTO, UpdateSettingsDTO, SessionDTO } from '@karaoke/contracts';
-import { AlertOctagon, Music, ListOrdered, Play, Search, FolderPlus } from 'lucide-react';
+import { CatalogPanel } from './components/CatalogPanel.js';
+import { FolderManagerModal } from './components/FolderManagerModal.js';
+import { EditSongModal } from './components/EditSongModal.js';
+import { SongDetailsModal } from './components/SongDetailsModal.js';
+import {
+  SettingsDTO,
+  UpdateSettingsDTO,
+  SessionDTO,
+  MediaFolderDTO,
+  SongDTO,
+} from '@karaoke/contracts';
+import { AlertOctagon, ListOrdered, Play } from 'lucide-react';
 
 export const App: React.FC = () => {
   const [settings, setSettings] = useState<SettingsDTO | null>(null);
   const [currentSession, setCurrentSession] = useState<SessionDTO | null>(null);
+  const [folders, setFolders] = useState<MediaFolderDTO[]>([]);
   const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
+  const [isFolderManagerOpen, setIsFolderManagerOpen] = useState<boolean>(false);
+  const [editingSong, setEditingSong] = useState<SongDTO | null>(null);
+  const [detailsSong, setDetailsSong] = useState<SongDTO | null>(null);
+  const [scanProgress, setScanProgress] = useState<{
+    folderId: string;
+    discovered: number;
+    processed: number;
+    errors: number;
+    status: string;
+    currentFile?: string;
+  } | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
-  const [notification, setNotification] = useState<string>('Base segura inicializada correctamente.');
+  const [notification, setNotification] = useState<string>('Catálogo local listo.');
+
+  const refreshFolders = async () => {
+    if (!window.karaokeAPI) return;
+    const res = await window.karaokeAPI.listFolders();
+    if (res.success) {
+      setFolders(res.data);
+    }
+  };
 
   useEffect(() => {
     const initApp = async () => {
@@ -25,6 +55,28 @@ export const App: React.FC = () => {
           if (sessionRes.success) {
             setCurrentSession(sessionRes.data);
           }
+
+          await refreshFolders();
+
+          // Suscribirse a progreso de escaneo
+          window.karaokeAPI.onScanProgress((payload: unknown) => {
+            const p = payload as {
+              folderId: string;
+              discovered: number;
+              processed: number;
+              errors: number;
+              status: string;
+              currentFile?: string;
+            };
+            setScanProgress(p);
+            if (p.status === 'COMPLETED') {
+              setNotification(`Escaneo completado: ${p.processed} archivos procesados.`);
+              refreshFolders();
+            } else if (p.status === 'CANCELLED') {
+              setNotification('Escaneo cancelado por el operador.');
+              refreshFolders();
+            }
+          });
         }
       } catch (err) {
         console.error('Error inicializando consola:', err);
@@ -60,6 +112,57 @@ export const App: React.FC = () => {
     if (res.success) {
       setCurrentSession(null);
       setNotification('Sesión finalizada.');
+    }
+  };
+
+  const handleSelectFolder = async () => {
+    if (!window.karaokeAPI) return;
+    const res = await window.karaokeAPI.selectFolder();
+    if (res.success && res.data) {
+      const folder = res.data;
+      setNotification(`Carpeta "${folder.displayName}" autorizada.`);
+      await refreshFolders();
+      // Iniciar escaneo automático inicial
+      await window.karaokeAPI.scanFolder(folder.id);
+    }
+  };
+
+  const handleScanFolder = async (folderId: string) => {
+    if (!window.karaokeAPI) return;
+    const res = await window.karaokeAPI.scanFolder(folderId);
+    if (res.success) {
+      setNotification('Escaneo iniciado en segundo plano...');
+    }
+  };
+
+  const handleRemoveFolder = async (folderId: string) => {
+    if (!window.karaokeAPI) return;
+    const res = await window.karaokeAPI.removeFolder(folderId);
+    if (res.success) {
+      setNotification('Carpeta desautorizada.');
+      await refreshFolders();
+    }
+  };
+
+  const handleSaveSongMetadata = async (songId: string, title: string, artist: string) => {
+    if (!window.karaokeAPI) return;
+    const res = await window.karaokeAPI.updateSong({ songId, title, artist });
+    if (res.success) {
+      setNotification(`Metadatos guardados: "${artist} - ${title}".`);
+    }
+  };
+
+  const handleLocateInExplorer = async (mediaAssetId: string) => {
+    if (!window.karaokeAPI) return;
+    await window.karaokeAPI.locateInExplorer(mediaAssetId);
+  };
+
+  const handleReanalyze = async (mediaAssetId: string) => {
+    if (!window.karaokeAPI) return;
+    await window.karaokeAPI.reanalyzeAsset(mediaAssetId);
+    setNotification('Activo reanalizado con ffprobe.');
+    if (detailsSong && detailsSong.asset?.id === mediaAssetId) {
+      setDetailsSong(null);
     }
   };
 
@@ -100,62 +203,14 @@ export const App: React.FC = () => {
       </div>
 
       <main className="main-grid">
-        {/* Panel 1: Catálogo */}
-        <section className="panel" aria-label="Catálogo de canciones">
-          <div className="panel-header">
-            <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <Music size={18} color="var(--accent-warm)" />
-              Catálogo Local
-            </span>
-            <button className="btn btn-icon" title="Añadir carpeta (Fase 2)" disabled>
-              <FolderPlus size={18} />
-            </button>
-          </div>
-
-          <div className="panel-content">
-            <div className="form-group">
-              <div style={{ position: 'relative' }}>
-                <Search
-                  size={18}
-                  style={{
-                    position: 'absolute',
-                    left: '12px',
-                    top: '13px',
-                    color: 'var(--text-muted)',
-                  }}
-                />
-                <input
-                  type="text"
-                  className="form-input"
-                  placeholder="Buscar por artista o título..."
-                  style={{ width: '100%', paddingLeft: '40px' }}
-                  disabled
-                />
-              </div>
-            </div>
-
-            <div
-              style={{
-                flex: 1,
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                justifyContent: 'center',
-                textAlign: 'center',
-                color: 'var(--text-secondary)',
-                border: '1px dashed var(--border-strong)',
-                borderRadius: '6px',
-                padding: '24px',
-              }}
-            >
-              <Music size={40} color="var(--border-strong)" style={{ marginBottom: '12px' }} />
-              <strong style={{ color: 'var(--text-primary)' }}>Base segura completada</strong>
-              <p style={{ fontSize: '14px', marginTop: '6px' }}>
-                El catálogo local, el escaneo con ffprobe y la monitorización de carpetas se activarán en la Fase 2.
-              </p>
-            </div>
-          </div>
-        </section>
+        {/* Panel 1: Catálogo Local con búsqueda y carpetas */}
+        <CatalogPanel
+          folders={folders}
+          onOpenFolderManager={() => setIsFolderManagerOpen(true)}
+          onEditSong={(song) => setEditingSong(song)}
+          onViewDetails={(song) => setDetailsSong(song)}
+          scanProgress={scanProgress}
+        />
 
         {/* Panel 2: Cola de Actuaciones */}
         <section className="panel" aria-label="Cola de cantantes">
@@ -185,7 +240,7 @@ export const App: React.FC = () => {
               <ListOrdered size={40} color="var(--border-strong)" style={{ marginBottom: '12px' }} />
               <strong style={{ color: 'var(--text-primary)' }}>Cola vacía</strong>
               <p style={{ fontSize: '14px', marginTop: '6px' }}>
-                La máquina de estados de turnos y cantantes se implementará en la Fase 3.
+                La máquina de estados de cantantes y asignación de canciones se implementará en la Fase 3.
               </p>
             </div>
           </div>
@@ -259,6 +314,30 @@ export const App: React.FC = () => {
           onSave={handleSaveSettings}
         />
       )}
+
+      <FolderManagerModal
+        isOpen={isFolderManagerOpen}
+        folders={folders}
+        onClose={() => setIsFolderManagerOpen(false)}
+        onSelectFolder={handleSelectFolder}
+        onScanFolder={handleScanFolder}
+        onRemoveFolder={handleRemoveFolder}
+      />
+
+      <EditSongModal
+        song={editingSong}
+        isOpen={!!editingSong}
+        onClose={() => setEditingSong(null)}
+        onSave={handleSaveSongMetadata}
+      />
+
+      <SongDetailsModal
+        song={detailsSong}
+        isOpen={!!detailsSong}
+        onClose={() => setDetailsSong(null)}
+        onLocateInExplorer={handleLocateInExplorer}
+        onReanalyze={handleReanalyze}
+      />
     </div>
   );
 };
