@@ -39,3 +39,13 @@
 - **Contexto:** Si la aplicación se cierra inesperadamente mientras una canción estaba en reproducción, al reabrir no debe reproducirse automáticamente ni asumir que la canción sigue sonando.
 - **Decisión:** Al iniciar, cualquier elemento que estuviera en `PLAYING` se transiciona a `READY` y se mantiene la cola intacta sin disparar reproducción automática.
 - **Consecuencias:** Cero sorpresas de audio para el operador al arrancar la consola tras un reinicio.
+
+## ADR-009: Protocolo Seguro `karaoke-media://` con HTTP 206 y Cero Exposición de Rutas
+- **Contexto:** El elemento `<video>` de Chromium requiere soporte de rangos parciales de bytes para búsqueda rápida (seeking), pero exponer rutas absolutas locales (`file:///C:/...`) al renderer viola el principio de mínimo privilegio y crea riesgos de seguridad.
+- **Decisión:** Implementar el esquema privilegiado `karaoke-media://asset/<assetId>`. El renderer únicamente manipula identificadores de activos. El proceso principal resuelve la ruta física en disco a través del repositorio, verifica `assertSafePath` para blindar contra Path Traversal y sirve el archivo usando `ReadableStream` con encabezados HTTP 206 (`Content-Range`, `Accept-Ranges`).
+- **Consecuencias:** Rendimiento nativo de streaming y búsqueda instantánea en video/audio con aislamiento absoluto del sistema de archivos.
+
+## ADR-010: Finalización de Pistas Estrictamente por Evento Nativo `ended`
+- **Contexto:** Marcar canciones como completadas usando temporizadores aproximados o duraciones estimadas provoca cortes prematuros o estados desincronizados en pistas con silencios o variaciones.
+- **Decisión:** La transición a `COMPLETED` se desencadena exclusivamente mediante el evento nativo del DOM `ended` emitido por el elemento HTML5 `<video>`, canalizado de forma segura vía IPC `player:reportEnded`.
+- **Consecuencias:** Finalización 100% precisa y libre de simulaciones artificiales.

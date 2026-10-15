@@ -1,0 +1,1 @@
+{"root":["./src/index.ts","./src/interface.ts","./src/mime.ts","./src/range-parser.ts","./src/__tests__/range-parser.test.ts"],"version":"5.9.3"}

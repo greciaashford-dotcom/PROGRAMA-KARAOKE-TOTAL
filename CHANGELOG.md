@@ -2,6 +2,37 @@
 
 Todas las modificaciones notables de este proyecto se documentarán en este archivo.
 
+## [Fase 4] - 2026-10-15
+
+### Añadido
+- Paquete `@karaoke/media-engine`:
+  - Contrato formal desacoplado `IMediaEngine` y eventos de estado `MediaEngineEvents`.
+  - Parser de rangos de bytes HTTP `parseByteRange` conforme a RFC 7233 / 9110, soportando streaming parcial y protegiendo contra peticiones insatisfactorias.
+  - Resolvedor de tipos MIME `getMimeType` para formatos multimedia nativos web (.mp4, .webm, .mp3, .wav, .ogg, .aac, .flac).
+  - Batería de 13 pruebas unitarias específicas para `parseByteRange` y `getMimeType`.
+- Paquete `@karaoke/database`:
+  - `PlaybackRepository`: Gestión persistente del estado de reproducción en la tabla `playback_state` (singleton).
+  - Comandos atómicos para `PLAY`, `PAUSE`, `STOP`, `SEEK`, `SET_VOLUME` y actualización dosificada de progreso.
+  - Reconciliación al inicio (`reconcileStartup`) para limpiar estados `PLAYING` huérfanos y prevenir reproducción automática tras reinicios.
+  - Métodos `getAssetFileDetails` y `getAssetFileDetailsBySongId` en `MediaRepository` para resolución segura de archivos físicos.
+  - Suite de pruebas unitarias en `playback.test.ts` con validación de integridad referencial.
+- Aplicación `@karaoke/desktop`:
+  - Esquema privilegiado `karaoke-media` registrado antes de `app.whenReady()`.
+  - Controlador de protocolo `registerMediaProtocol` con streaming HTTP 206 Partial Content vía `ReadableStream` y verificación estricta de Path Traversal con `assertSafePath`.
+  - Cero exposición de rutas físicas de disco en la interfaz; URLs normalizadas como `karaoke-media://asset/<uuid>`.
+  - Canales IPC para reproductor en `player-handlers.ts` (`player:getState`, `player:prepare`, `player:command`, `player:emergencyStop`, `player:reportEnded`, `player:updateProgress`).
+  - Preload bridge actualizado en `operator.ts` y contratos en `types.ts`.
+  - Componente `PlayerPanel.tsx`:
+    - Visor de previsualización 16:9 con elemento HTML5 `<video>` real.
+    - Manejo estricto de finalización mediante evento nativo `ended` (sin temporizadores artificiales).
+    - Scrubber interactivo con tiempo formateado `mm:ss / mm:ss`.
+    - Controles de transporte (Reproducir, Pausar, Detener, Rebobinar 5s, Avanzar 5s).
+    - Deslizador de volumen maestro con botón de silenciado.
+    - Atajos de teclado para directo: `Espacio` (play/pause), `Esc`/`F12` (parada de emergencia), `Flechas` (búsqueda).
+    - Botón de Parada de Emergencia permanente y accesible en 1 clic.
+  - Integración en `QueuePanel` con botón directo "Cargar" para enviar canciones en estado `READY` o `PREPARING` al reproductor.
+- Verificación completa: 47 pruebas unitarias pasando en todo el monorepo, 0 errores en typecheck y ESLint.
+
 ## [Fase 3] - 2026-10-15
 
 ### Añadido

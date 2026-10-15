@@ -15,6 +15,7 @@ import {
   UpdateSongDTO,
 } from '@karaoke/contracts';
 import { randomUUID } from 'node:crypto';
+import * as path from 'node:path';
 
 export interface BatchItemInput {
   relativePath: string;
@@ -433,5 +434,35 @@ export class MediaRepository {
 
   public getAssetById(assetId: string) {
     return this.db.select().from(mediaAssetsTable).where(eq(mediaAssetsTable.id, assetId)).get();
+  }
+
+  public getAssetFileDetails(assetId: string): {
+    folderAbsolutePath: string;
+    relativePath: string;
+    absolutePath: string;
+    asset: typeof mediaAssetsTable.$inferSelect;
+  } | null {
+    const asset = this.getAssetById(assetId);
+    if (!asset) return null;
+    const folder = this.getFolderById(asset.folderId);
+    if (!folder || !folder.absolutePath) return null;
+    const absolutePath = path.join(folder.absolutePath, asset.relativePath);
+    return {
+      folderAbsolutePath: folder.absolutePath,
+      relativePath: asset.relativePath,
+      absolutePath,
+      asset,
+    };
+  }
+
+  public getAssetFileDetailsBySongId(songId: string): {
+    folderAbsolutePath: string;
+    relativePath: string;
+    absolutePath: string;
+    asset: typeof mediaAssetsTable.$inferSelect;
+  } | null {
+    const song = this.db.select().from(songsTable).where(eq(songsTable.id, songId)).get();
+    if (!song) return null;
+    return this.getAssetFileDetails(song.mediaAssetId);
   }
 }

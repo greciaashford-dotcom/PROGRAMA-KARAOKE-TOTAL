@@ -4,6 +4,7 @@ import { SettingsModal } from './components/SettingsModal.js';
 import { SessionBanner } from './components/SessionBanner.js';
 import { CatalogPanel } from './components/CatalogPanel.js';
 import { QueuePanel } from './components/QueuePanel.js';
+import { PlayerPanel } from './components/PlayerPanel.js';
 import { FolderManagerModal } from './components/FolderManagerModal.js';
 import { EditSongModal } from './components/EditSongModal.js';
 import { SongDetailsModal } from './components/SongDetailsModal.js';
@@ -19,7 +20,8 @@ import {
   SingerDTO,
   QueueStatus,
 } from '@karaoke/contracts';
-import { AlertOctagon, Play } from 'lucide-react';
+import { AlertOctagon } from 'lucide-react';
+import { PlayerPrepareResult } from '../../preload/types.js';
 
 export const App: React.FC = () => {
   const [settings, setSettings] = useState<SettingsDTO | null>(null);
@@ -28,6 +30,7 @@ export const App: React.FC = () => {
   const [queue, setQueue] = useState<QueueItemDTO[]>([]);
   const [singers, setSingers] = useState<SingerDTO[]>([]);
   const [previousOrder, setPreviousOrder] = useState<string[] | null>(null);
+  const [preparedTrack, setPreparedTrack] = useState<PlayerPrepareResult | null>(null);
 
   // Modales
   const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
@@ -301,8 +304,31 @@ export const App: React.FC = () => {
     }
   };
 
-  const handleEmergencyStop = () => {
-    setNotification('¡PARADA DE EMERGENCIA ACTIVADA!');
+  const handlePrepareTrack = async (item: QueueItemDTO) => {
+    if (!window.karaokeAPI) return;
+    const res = await window.karaokeAPI.preparePlayer({
+      sessionId: item.sessionId,
+      queueItemId: item.id,
+    });
+    if (res.success) {
+      setPreparedTrack(res.data);
+      setNotification(`Pista cargada en el reproductor: ${res.data.title}`);
+      if (currentSession) {
+        await refreshQueue(currentSession.id);
+      }
+    } else {
+      alert(`Error al preparar pista: ${res.error.message}`);
+    }
+  };
+
+  const handleEmergencyStop = async () => {
+    if (window.karaokeAPI) {
+      await window.karaokeAPI.emergencyStop();
+      if (currentSession) {
+        await refreshQueue(currentSession.id);
+      }
+    }
+    setNotification('¡PARADA DE EMERGENCIA ACTIVADA! Vídeo y audio cortados.');
   };
 
   if (loading) {
@@ -361,49 +387,19 @@ export const App: React.FC = () => {
           onUndoReorder={handleUndoReorder}
           onMoveItem={handleMoveItem}
           onTransitionItem={handleTransitionItem}
+          onPrepareForPlayback={handlePrepareTrack}
         />
 
-        {/* Panel 3: Reproducción Actual */}
-        <section className="panel" aria-label="Control de reproducción actual">
-          <div className="panel-header">
-            <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <Play size={18} color="var(--accent-warm)" />
-              Reproductor Local
-            </span>
-            <span className="pill" style={{ backgroundColor: 'var(--bg-surface-hover)', fontSize: '12px' }}>
-              IDLE
-            </span>
-          </div>
-
-          <div className="panel-content">
-            <div
-              style={{
-                height: '180px',
-                backgroundColor: '#0a0a0c',
-                borderRadius: '6px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: 'var(--text-muted)',
-                border: '1px solid var(--border-subtle)',
-              }}
-            >
-              Vista previa del vídeo local (Fase 4)
-            </div>
-
-            <div style={{ display: 'flex', gap: '8px', justifyContent: 'center' }}>
-              <button className="btn" disabled>
-                Anterior
-              </button>
-              <button className="btn btn-primary" disabled>
-                Reproducir
-              </button>
-              <button className="btn" disabled>
-                Siguiente
-              </button>
-            </div>
-          </div>
-        </section>
+        {/* Panel 3: Reproductor y Control en Vivo */}
+        <PlayerPanel
+          queue={queue}
+          onRefreshQueue={async () => {
+            if (currentSession) await refreshQueue(currentSession.id);
+          }}
+          onNotification={setNotification}
+          preparedTrack={preparedTrack}
+          onSetPreparedTrack={setPreparedTrack}
+        />
       </main>
 
       <footer className="footer-bar">

@@ -10,6 +10,8 @@ import {
   QueueTransitionDTO,
   CreateSingerDTO,
   QueueItemDTO,
+  PlayerCommandDTO,
+  PlaybackSnapshotDTO,
 } from '@karaoke/contracts';
 import { KaraokeAPI } from './types.js';
 
@@ -61,6 +63,20 @@ const api: KaraokeAPI = {
   transitionQueue: (payload: QueueTransitionDTO) =>
     ipcRenderer.invoke(IPC_CHANNELS.QUEUE_TRANSITION, payload),
 
+  // Reproductor multimedia
+  preparePlayer: (payload: { sessionId: string; queueItemId: string }) =>
+    ipcRenderer.invoke(IPC_CHANNELS.PLAYER_PREPARE, payload),
+  sendPlayerCommand: (command: PlayerCommandDTO) =>
+    ipcRenderer.invoke(IPC_CHANNELS.PLAYER_COMMAND, command),
+  emergencyStop: () =>
+    ipcRenderer.invoke(IPC_CHANNELS.PLAYER_EMERGENCY_STOP),
+  getPlayerState: () =>
+    ipcRenderer.invoke(IPC_CHANNELS.PLAYER_GET_STATE),
+  reportPlayerEnded: (queueItemId: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.PLAYER_REPORT_ENDED, { queueItemId }),
+  updatePlayerProgress: (positionMs: number, durationMs?: number) =>
+    ipcRenderer.invoke(IPC_CHANNELS.PLAYER_UPDATE_PROGRESS, { positionMs, durationMs }),
+
   // Suscripciones a eventos seguros
   onScanProgress: (callback: (payload: unknown) => void) => {
     const handler = (_event: IpcRendererEvent, payload: unknown) => callback(payload);
@@ -79,8 +95,8 @@ const api: KaraokeAPI = {
     };
   },
 
-  onPlayerStateChanged: (callback: (payload: unknown) => void) => {
-    const handler = (_event: IpcRendererEvent, payload: unknown) => callback(payload);
+  onPlayerStateChanged: (callback: (snapshot: PlaybackSnapshotDTO) => void) => {
+    const handler = (_event: IpcRendererEvent, payload: PlaybackSnapshotDTO) => callback(payload);
     ipcRenderer.on(IPC_CHANNELS.EVENT_PLAYER_STATE_CHANGED, handler);
     return () => {
       ipcRenderer.removeListener(IPC_CHANNELS.EVENT_PLAYER_STATE_CHANGED, handler);

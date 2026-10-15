@@ -14,6 +14,8 @@ import {
   QueueTransitionDTO,
   SingerDTO,
   CreateSingerDTO,
+  PlaybackSnapshotDTO,
+  PlayerCommandDTO,
 } from '@karaoke/contracts';
 
 export interface PaginatedResult<T> {
@@ -21,6 +23,18 @@ export interface PaginatedResult<T> {
   total: number;
   page: number;
   pageSize: number;
+}
+
+export interface PlayerPrepareResult {
+  success: boolean;
+  mediaUrl: string;
+  queueItemId: string;
+  title: string;
+  artist: string;
+  singerName: string;
+  durationMs: number;
+  keyShift: number;
+  snapshot: PlaybackSnapshotDTO;
 }
 
 export interface KaraokeAPI {
@@ -55,10 +69,18 @@ export interface KaraokeAPI {
   undoReorder: (payload: UndoReorderDTO) => Promise<Result<void>>;
   transitionQueue: (payload: QueueTransitionDTO) => Promise<Result<QueueItemDTO>>;
 
+  // Reproductor multimedia y control en vivo
+  preparePlayer: (payload: { sessionId: string; queueItemId: string }) => Promise<Result<PlayerPrepareResult>>;
+  sendPlayerCommand: (command: PlayerCommandDTO) => Promise<Result<PlaybackSnapshotDTO>>;
+  emergencyStop: () => Promise<Result<PlaybackSnapshotDTO>>;
+  getPlayerState: () => Promise<Result<PlaybackSnapshotDTO>>;
+  reportPlayerEnded: (queueItemId: string) => Promise<Result<PlaybackSnapshotDTO>>;
+  updatePlayerProgress: (positionMs: number, durationMs?: number) => Promise<Result<void>>;
+
   // Suscripciones a eventos seguros
   onScanProgress: (callback: (payload: unknown) => void) => () => void;
   onQueueUpdated: (callback: (payload: { sessionId: string; items: QueueItemDTO[] }) => void) => () => void;
-  onPlayerStateChanged: (callback: (payload: unknown) => void) => () => void;
+  onPlayerStateChanged: (callback: (snapshot: PlaybackSnapshotDTO) => void) => () => void;
   onMonitorsChanged: (callback: (payload: unknown) => void) => () => void;
 }
 

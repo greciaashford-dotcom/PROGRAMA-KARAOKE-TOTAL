@@ -8,11 +8,13 @@ import {
   MediaRepository,
   SingerRepository,
   QueueRepository,
+  PlaybackRepository,
   KaraokeDatabase,
 } from '@karaoke/database';
 import { MediaFolderWatcher } from '@karaoke/media-indexer';
 import { Database as DatabaseInstance } from 'better-sqlite3';
 import { registerAllIpcHandlers } from './ipc/index.js';
+import { registerMediaProtocol } from './protocols/media-protocol.js';
 import { createOperatorWindow } from './windows/operator-window.js';
 import { setupSecurity } from './security.js';
 import { IPC_CHANNELS } from '@karaoke/contracts';
@@ -84,16 +86,23 @@ export class AppLifecycle {
     const mediaRepo = new MediaRepository(this.db);
     const singerRepo = new SingerRepository(this.db);
     const queueRepo = new QueueRepository(this.db);
+    const playbackRepo = new PlaybackRepository(this.db);
 
-    // Recuperación resiliente al iniciar:
-    // Si había una sesión abierta, reconciliar la cola (marcar estados en reproducción como READY sin reproducir automáticamente)
+    // Registrar protocolo seguro 'karaoke-media://'
+    registerMediaProtocol(mediaRepo);
+
+    // Reconciliación resiliente al iniciar:
+    // 1. Cola de sesión: reconciliar estados PLAYING a READY
     const latestActiveSession = sessionRepo.getLatestActiveSession();
     if (latestActiveSession) {
       const { recoveredCount } = queueRepo.recoverSessionQueue(latestActiveSession.id);
       if (recoveredCount > 0) {
-        console.log(`[Recuperación] Se reconciliaron ${recoveredCount} canciones interrumpidas tras el reinicio.`);
+        console.log(`[Recuperación] Se reconciliaron ${recoveredCount} canciones interrumpidas en la cola.`);
       }
     }
+
+    // 2. Estado de reproducción: nunca iniciar reproducción automática tras un reinicio
+    playbackRepo.reconcileStartup();
 
     // Reconstruir watchers para todas las carpetas autorizadas y habilitadas
     const folders = mediaRepo.listFolders();
@@ -120,6 +129,7 @@ export class AppLifecycle {
       mediaRepo,
       singerRepo,
       queueRepo,
+      playbackRepo,
       watcher: this.watcher,
       getWindow: () => this.operatorWindow,
     });

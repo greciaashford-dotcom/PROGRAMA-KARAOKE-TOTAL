@@ -32,6 +32,9 @@ export const IPC_CHANNELS = {
   PLAYER_PREPARE: 'player:prepare',
   PLAYER_COMMAND: 'player:command',
   PLAYER_EMERGENCY_STOP: 'player:emergencyStop',
+  PLAYER_GET_STATE: 'player:getState',
+  PLAYER_REPORT_ENDED: 'player:reportEnded',
+  PLAYER_UPDATE_PROGRESS: 'player:updateProgress',
 
   // Pantallas
   DISPLAY_GET_MONITORS: 'display:getMonitors',

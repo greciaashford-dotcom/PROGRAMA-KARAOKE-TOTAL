@@ -1,5 +1,19 @@
-import { app } from 'electron';
+import { app, protocol } from 'electron';
 import { AppLifecycle } from './lifecycle.js';
+
+// Registrar esquema privilegiado antes de que la aplicación esté lista (app.whenReady)
+protocol.registerSchemesAsPrivileged([
+  {
+    scheme: 'karaoke-media',
+    privileges: {
+      standard: true,
+      secure: true,
+      supportFetchAPI: true,
+      corsEnabled: true,
+      stream: true,
+    },
+  },
+]);
 
 app.whenReady().then(async () => {
   const lifecycle = AppLifecycle.getInstance();

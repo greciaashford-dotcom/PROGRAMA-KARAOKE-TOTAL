@@ -19,6 +19,7 @@ interface QueuePanelProps {
   onUndoReorder: () => Promise<void>;
   onMoveItem: (index: number, direction: 'UP' | 'DOWN') => Promise<void>;
   onTransitionItem: (itemId: string, nextStatus: QueueStatus, reason?: string) => Promise<void>;
+  onPrepareForPlayback?: (item: QueueItemDTO) => Promise<void>;
 }
 
 export const QueuePanel: React.FC<QueuePanelProps> = ({
@@ -27,6 +28,7 @@ export const QueuePanel: React.FC<QueuePanelProps> = ({
   onUndoReorder,
   onMoveItem,
   onTransitionItem,
+  onPrepareForPlayback,
 }) => {
   const activeItems = queue.filter(
     (item) => !['COMPLETED', 'CANCELLED', 'SKIPPED'].includes(item.status),
@@ -315,23 +317,42 @@ export const QueuePanel: React.FC<QueuePanelProps> = ({
                       )}
 
                       {item.status === 'PREPARING' && (
-                        <button
-                          className="btn btn-primary"
-                          onClick={() => onTransitionItem(item.id, 'READY')}
-                          style={{ height: '34px', minHeight: '34px', padding: '0 10px', fontSize: '13px' }}
-                        >
-                          Listo
-                        </button>
+                        <>
+                          {onPrepareForPlayback && (
+                            <button
+                              className="btn btn-primary"
+                              onClick={() => onPrepareForPlayback(item)}
+                              title="Cargar en el reproductor"
+                              style={{ height: '34px', minHeight: '34px', padding: '0 10px', fontSize: '13px' }}
+                            >
+                              Cargar
+                            </button>
+                          )}
+                          <button
+                            className="btn"
+                            onClick={() => onTransitionItem(item.id, 'READY')}
+                            style={{ height: '34px', minHeight: '34px', padding: '0 10px', fontSize: '13px' }}
+                          >
+                            Listo
+                          </button>
+                        </>
                       )}
 
                       {item.status === 'READY' && (
                         <button
                           className="btn btn-primary"
-                          onClick={() => onTransitionItem(item.id, 'PLAYING')}
+                          onClick={() => {
+                            if (onPrepareForPlayback) {
+                              onPrepareForPlayback(item);
+                            } else {
+                              onTransitionItem(item.id, 'PLAYING');
+                            }
+                          }}
+                          title="Cargar y poner en directo"
                           style={{ height: '34px', minHeight: '34px', padding: '0 10px', fontSize: '13px' }}
                         >
                           <Volume2 size={16} />
-                          Iniciar
+                          Cargar
                         </button>
                       )}
 
