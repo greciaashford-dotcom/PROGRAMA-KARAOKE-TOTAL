@@ -1,6 +1,7 @@
 node_modules/
 dist/
 build/
+release/
 .turbo/
 *.log
 npm-debug.log*

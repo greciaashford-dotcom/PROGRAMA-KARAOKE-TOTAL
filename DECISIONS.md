@@ -59,3 +59,12 @@
   4. Escuchar eventos de hardware de pantalla (`display-removed`) para rescatar automáticamente la ventana pública al monitor primario si la pantalla externa se desconecta, complementado con un botón manual de rescate ("Rescatar pantalla").
 - **Consecuencias:** Experiencia profesional ininterrumpida para el público, máxima resiliencia ante incidentes con cables o proyectores, y garantía absoluta de privacidad en el local.
 
+## ADR-012: Empaquetado NSIS con electron-builder, Binarios N-API y Desempaquetado de Binarios Auxiliares
+- **Contexto:** En sistemas Windows de producción, la compilación de dependencias nativas C++ como `better-sqlite3` con `node-gyp` falla si el equipo del local carece del SDK de Visual Studio C++. Asimismo, los ejecutables empaquetados dentro de un archivo virtual `.asar` no pueden ser ejecutados directamente mediante `child_process.spawn()`.
+- **Decisión:**
+  1. Configurar `npmRebuild: false` y `buildDependenciesFromSource: false` en `electron-builder.json`, aprovechando los binarios N-API precompilados de `better-sqlite3` (`win32-x64.node`) que son compatibles y estables entre versiones de Node.js y Electron.
+  2. Configurar `asarUnpack` para `ffprobe-static` y adaptar `getFfprobePath()` para redirigir dinámicamente de `app.asar` a `app.asar.unpacked`.
+  3. Empaquetar un instalador NSIS completo (`oneClick: false`, selección de directorio y accesos directos).
+- **Consecuencias:** Instalador autónomo y reproducible que funciona sin dependencias de compilación adicionales en Windows 10/11, garantizando que `ffprobe` y SQLite operen inmediatamente tras la instalación.
+
+

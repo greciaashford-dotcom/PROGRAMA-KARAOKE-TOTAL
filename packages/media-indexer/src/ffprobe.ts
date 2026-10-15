@@ -21,7 +21,10 @@ export interface TechnicalMetadata {
 
 export function getFfprobePath(): string {
   // Ruta provista por el binario empaquetado ffprobe-static
-  return ffprobeStatic.path || 'ffprobe';
+  const binaryPath = ffprobeStatic.path || 'ffprobe';
+  // En producción empaquetada con asar, child_process.spawn requiere ejecutar
+  // el binario físico desde app.asar.unpacked
+  return binaryPath.replace('app.asar', 'app.asar.unpacked');
 }
 
 /**

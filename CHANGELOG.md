@@ -2,6 +2,26 @@
 
 Todas las modificaciones notables de este proyecto se documentarán en este archivo.
 
+## [Fase 6] - 2026-10-15
+
+### Añadido
+- Empaquetado y Distribución:
+  - Archivo de configuración `electron-builder.json` para empaquetado autónomo en Windows con instalador NSIS x64.
+  - Ejecutable instalador `release/Karaoke Total Setup 0.1.0.exe` (183 MB) con asistente interactivo, selección de directorio de instalación, accesos directos y desinstalador limpio.
+  - Distribución portable/desempaquetada en `release/win-unpacked/Karaoke Total.exe`.
+  - Configuración `npmRebuild: false` y preservación de binarios precompilados estables N-API `win32-x64.node` de `better-sqlite3`.
+  - Configuración `asarUnpack` para binarios auxiliares de `ffprobe-static` (`ffprobe.exe`).
+- Paquete `@karaoke/media-indexer`:
+  - Adaptación de `getFfprobePath()` para redirigir dinámicamente de la ruta virtual `app.asar` a `app.asar.unpacked` en producción.
+- Documentación Técnica y Manuales:
+  - `docs/USER_GUIDE.md`: Manual oficial de usuario y guía práctica para el operador del karaoke.
+  - `docs/SECURITY.md`: Informe de auditoría y arquitectura de seguridad (CSP, sandbox, `assertSafePath`, IPC Zod y privacidad).
+  - `docs/ARCHITECTURE.md`: Documento de arquitectura, modelo relacional SQLite WAL, diagramas de procesos y máquina de estados.
+  - `docs/TESTING.md`: Plan de aseguramiento de calidad con 49 pruebas unitarias y protocolo de validación manual en Windows.
+- Scripts en `package.json`:
+  - Comandos `"pack"` y `"dist"` en `apps/desktop` para empaquetado rápido e instalador NSIS.
+  - Configuración de aprobación de scripts nativos en `pnpm-workspace.yaml`.
+
 ## [Fase 5] - 2026-10-15
 
 ### Añadido

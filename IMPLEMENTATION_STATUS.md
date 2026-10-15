@@ -10,7 +10,33 @@
 | **Fase 3** | Sesión y Cola (Cantantes, Turnos, Reordenar, Transiciones) | **Completada y Verificada** | 29 pasadas / 0 fallidas |
 | **Fase 4** | Reproductor (Protocolo Seguro, Rangos de Bytes, Controles) | **Completada y Verificada** | 47 pasadas / 0 fallidas |
 | **Fase 5** | Segunda Pantalla (Ventana Pública, Monitor Secundario, Desconexión) | **Completada y Verificada** | 49 pasadas / 0 fallidas |
-| **Fase 6** | Empaquetado y Validación (Instalador NSIS, Auditoría) | Pendiente | — |
+| **Fase 6** | Empaquetado y Validación (Instalador NSIS, Auditoría) | **Completada y Verificada** | 49 pasadas / 0 fallidas |
+
+---
+
+## Detalle de la Fase 6 — Empaquetado e Instalador NSIS, Auditoría Final y Documentación
+
+### Objetivos Completados
+- [x] Configuración de Empaquetado con `electron-builder` (`apps/desktop/electron-builder.json`):
+  - Definición de instalador **NSIS x64** para Windows (`Karaoke Total Setup 0.1.0.exe`).
+  - Asistente de instalación personalizable (`oneClick: false`, selección de directorio de instalación, accesos directos en Escritorio y Menú Inicio, y desinstalador limpio).
+  - Configuración `npmRebuild: false` y `buildDependenciesFromSource: false` para emplear los binarios estables N-API de `better-sqlite3` (`win32-x64.node`) sin requerir Visual Studio C++ en el equipo de destino.
+  - Configuración `asarUnpack` para extraer `ffprobe.exe` en `resources/app.asar.unpacked`.
+- [x] Resiliencia de Binarios Auxiliares en Producción:
+  - Adaptación de `getFfprobePath()` en `@karaoke/media-indexer` para sustituir automáticamente la ruta virtual `app.asar` por la ruta física `app.asar.unpacked` requerida por `child_process.spawn`.
+- [x] Rutas de Producción Seguras:
+  - Uso estricto de `app.getPath('userData')` (`%APPDATA%\karaoke-total`) para la base de datos SQLite y copias de seguridad automáticas previas a migraciones.
+  - Migraciones versionadas idempotentes con la tabla `__migrations`.
+- [x] Documentación Oficial Completa:
+  - [`docs/USER_GUIDE.md`](docs/USER_GUIDE.md): Manual práctico para el operador y propietario del karaoke (instalación, configuración de pantallas, gestión de carpetas, atajos de teclado y procedimientos de emergencia).
+  - [`docs/SECURITY.md`](docs/SECURITY.md): Documento de auditoría y arquitectura de seguridad (aislamiento de Electron, CSP estricta, protocolo `karaoke-media://`, prevención de Path Traversal y privacidad en pantalla pública).
+  - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md): Diagrama de arquitectura del monorepo, modelo de datos SQLite, máquina de estados y flujo de streaming.
+  - [`docs/TESTING.md`](docs/TESTING.md): Suite de 49 pruebas automatizadas y protocolo de validación manual en Windows.
+- [x] Generación Exitosa del Instalador:
+  - Generado el instalador de producción en `release/Karaoke Total Setup 0.1.0.exe` (183 MB) junto a la versión desempaquetada `release/win-unpacked/Karaoke Total.exe`.
+- [x] Verificación Completa:
+  - 49 pruebas unitarias pasando limpiamente con Vitest.
+  - Lint, Typecheck estricto y Build con 0 advertencias y 0 errores.
 
 ---
 

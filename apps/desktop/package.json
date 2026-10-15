@@ -1,6 +1,8 @@
 {
   "name": "@karaoke/desktop",
   "version": "0.1.0",
+  "description": "Consola del operador y proyección local de Karaoke Total",
+  "author": "Karaoke Total Team",
   "private": true,
   "main": "./dist/main/index.js",
   "scripts": {
@@ -10,6 +12,8 @@
     "build": "pnpm run build:vite && pnpm run build:main",
     "typecheck": "tsc --noEmit && tsc -p tsconfig.node.json --noEmit",
     "start": "electron ./dist/main/index.js",
+    "pack": "electron-builder --dir",
+    "dist": "electron-builder --win nsis",
     "clean": "node -e \"const fs = require('fs'); fs.rmSync('dist', { recursive: true, force: true });\""
   },
   "dependencies": {

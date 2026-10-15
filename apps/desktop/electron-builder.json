@@ -1,0 +1,39 @@
+{
+  "$schema": "https://raw.githubusercontent.com/electron-userland/electron-builder/master/packages/app-builder-lib/scheme.json",
+  "appId": "com.karaoketotal.desktop",
+  "productName": "Karaoke Total",
+  "copyright": "Copyright © 2026 Karaoke Total",
+  "directories": {
+    "output": "../../release"
+  },
+  "npmRebuild": false,
+  "buildDependenciesFromSource": false,
+  "files": [
+    "dist/**/*",
+    "node_modules/**/*",
+    "../../packages/*/dist/**/*",
+    "../../packages/*/package.json"
+  ],
+  "asar": true,
+  "asarUnpack": [
+    "**/node_modules/better-sqlite3/build/Release/*.node",
+    "**/node_modules/ffprobe-static/bin/**"
+  ],
+  "win": {
+    "target": [
+      {
+        "target": "nsis",
+        "arch": ["x64"]
+      }
+    ]
+  },
+  "nsis": {
+    "oneClick": false,
+    "perMachine": false,
+    "allowToChangeInstallationDirectory": true,
+    "createDesktopShortcut": true,
+    "createStartMenuShortcut": true,
+    "shortcutName": "Karaoke Total",
+    "uninstallDisplayName": "Karaoke Total"
+  }
+}
