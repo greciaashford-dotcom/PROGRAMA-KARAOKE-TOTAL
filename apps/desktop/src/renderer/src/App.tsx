@@ -31,6 +31,7 @@ export const App: React.FC = () => {
   const [singers, setSingers] = useState<SingerDTO[]>([]);
   const [previousOrder, setPreviousOrder] = useState<string[] | null>(null);
   const [preparedTrack, setPreparedTrack] = useState<PlayerPrepareResult | null>(null);
+  const [isPublicScreenOpen, setIsPublicScreenOpen] = useState<boolean>(false);
 
   // Modales
   const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
@@ -118,6 +119,17 @@ export const App: React.FC = () => {
           // Suscribirse a actualizaciones de cola
           window.karaokeAPI.onQueueUpdated((payload) => {
             setQueue(payload.items);
+          });
+
+          // Estado inicial de la pantalla pública
+          const pubStatusRes = await window.karaokeAPI.getPublicWindowStatus();
+          if (pubStatusRes.success) {
+            setIsPublicScreenOpen(pubStatusRes.data.isOpen);
+          }
+
+          // Escuchar cambios de pantallas en caliente
+          window.karaokeAPI.onMonitorsChanged(() => {
+            setNotification('Monitores actualizados (cambio en caliente).');
           });
         }
       } catch (err) {
@@ -331,6 +343,28 @@ export const App: React.FC = () => {
     setNotification('¡PARADA DE EMERGENCIA ACTIVADA! Vídeo y audio cortados.');
   };
 
+  const handleTogglePublicScreen = async () => {
+    if (!window.karaokeAPI) return;
+    const res = await window.karaokeAPI.togglePublicWindow();
+    if (res.success) {
+      setIsPublicScreenOpen(res.data.isOpen);
+      setNotification(
+        res.data.isOpen
+          ? 'Pantalla pública abierta en el monitor asignado.'
+          : 'Pantalla pública cerrada.',
+      );
+    }
+  };
+
+  const handleRescuePublicScreen = async () => {
+    if (!window.karaokeAPI) return;
+    const res = await window.karaokeAPI.rescuePublicWindow();
+    if (res.success) {
+      setIsPublicScreenOpen(true);
+      setNotification('Pantalla pública rescatada en el monitor principal del operador.');
+    }
+  };
+
   if (loading) {
     return (
       <div
@@ -352,6 +386,9 @@ export const App: React.FC = () => {
     <div className="app-container">
       <Header
         currentSession={currentSession}
+        isPublicScreenOpen={isPublicScreenOpen}
+        onTogglePublicScreen={handleTogglePublicScreen}
+        onRescuePublicScreen={handleRescuePublicScreen}
         onOpenSettings={() => setIsSettingsOpen(true)}
       />
 
@@ -425,6 +462,7 @@ export const App: React.FC = () => {
           isOpen={isSettingsOpen}
           onClose={() => setIsSettingsOpen(false)}
           onSave={handleSaveSettings}
+          onRescuePublicScreen={handleRescuePublicScreen}
         />
       )}
 

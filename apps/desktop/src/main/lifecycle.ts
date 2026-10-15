@@ -24,6 +24,7 @@ export class AppLifecycle {
   private db: KaraokeDatabase | null = null;
   private sqlite: DatabaseInstance | null = null;
   private operatorWindow: BrowserWindow | null = null;
+  private publicWindow: BrowserWindow | null = null;
   private watcher: MediaFolderWatcher = new MediaFolderWatcher();
 
   public static getInstance(): AppLifecycle {
@@ -131,12 +132,29 @@ export class AppLifecycle {
       queueRepo,
       playbackRepo,
       watcher: this.watcher,
-      getWindow: () => this.operatorWindow,
+      getOperatorWindow: () => this.operatorWindow,
+      getPublicWindow: () => this.publicWindow,
+      setPublicWindow: (win) => {
+        this.publicWindow = win;
+      },
+      getAllWindows: () =>
+        [this.operatorWindow, this.publicWindow].filter(
+          (w): w is BrowserWindow => w !== null && !w.isDestroyed(),
+        ),
     });
   }
 
   public cleanup(): void {
     this.watcher.closeAll();
+
+    if (this.publicWindow && !this.publicWindow.isDestroyed()) {
+      try {
+        this.publicWindow.close();
+      } catch {
+        // Ignorar si ya estaba cerrada
+      }
+      this.publicWindow = null;
+    }
 
     if (this.sqlite) {
       try {

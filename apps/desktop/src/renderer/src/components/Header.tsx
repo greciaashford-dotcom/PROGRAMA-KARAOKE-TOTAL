@@ -1,13 +1,22 @@
 import React, { useState, useEffect } from 'react';
-import { Settings, Monitor, Database, Disc } from 'lucide-react';
+import { Settings, Monitor, Database, Disc, LifeBuoy } from 'lucide-react';
 import { SessionDTO } from '@karaoke/contracts';
 
 interface HeaderProps {
   currentSession: SessionDTO | null;
+  isPublicScreenOpen: boolean;
+  onTogglePublicScreen: () => void;
+  onRescuePublicScreen: () => void;
   onOpenSettings: () => void;
 }
 
-export const Header: React.FC<HeaderProps> = ({ currentSession, onOpenSettings }) => {
+export const Header: React.FC<HeaderProps> = ({
+  currentSession,
+  isPublicScreenOpen,
+  onTogglePublicScreen,
+  onRescuePublicScreen,
+  onOpenSettings,
+}) => {
   const [currentTime, setCurrentTime] = useState<string>('');
 
   useEffect(() => {
@@ -46,13 +55,40 @@ export const Header: React.FC<HeaderProps> = ({ currentSession, onOpenSettings }
       </div>
 
       <div className="header-center">
-        <div className="status-indicator" title="Pantalla pública secundaria">
-          <Monitor size={18} />
-          <span>Pantalla: Configurando</span>
+        {/* Control Rápido de la Pantalla Pública */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <button
+            className={`btn ${isPublicScreenOpen ? 'btn-primary' : ''}`}
+            onClick={onTogglePublicScreen}
+            title={isPublicScreenOpen ? 'Cerrar pantalla del público' : 'Abrir pantalla pública en monitor secundario'}
+            style={{
+              height: '32px',
+              minHeight: '32px',
+              fontSize: '12px',
+              padding: '0 10px',
+              gap: '6px',
+            }}
+          >
+            <Monitor size={15} />
+            <span>
+              {isPublicScreenOpen ? 'Pantalla Pública: Activa' : 'Abrir Pantalla Pública'}
+            </span>
+          </button>
+
+          {isPublicScreenOpen && (
+            <button
+              className="btn btn-icon"
+              onClick={onRescuePublicScreen}
+              title="Rescatar pantalla pública (traer al monitor principal)"
+              style={{ width: '32px', height: '32px', minWidth: '32px', minHeight: '32px' }}
+            >
+              <LifeBuoy size={15} color="var(--accent-warm)" />
+            </button>
+          )}
         </div>
 
         <div className="status-indicator" title="Estado de la base de datos local">
-          <Database size={18} />
+          <Database size={16} />
           <span>SQLite: Conectada</span>
         </div>
       </div>

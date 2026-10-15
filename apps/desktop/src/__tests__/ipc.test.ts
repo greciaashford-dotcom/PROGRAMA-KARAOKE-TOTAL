@@ -9,6 +9,9 @@ import {
 import { Database as DatabaseInstance } from 'better-sqlite3';
 import {
   UpdateSettingsSchema,
+  AssignDisplaysSchema,
+  DisplayInfoSchema,
+  DisplayInfo,
   ok,
   err,
   ErrorCode,
@@ -95,5 +98,37 @@ describe('Pruebas de Lógica IPC y Repositorios en Fase 1', () => {
     expect(failureResult.success).toBe(false);
     expect(failureResult.error.code).toBe(ErrorCode.VALIDATION_ERROR);
     expect(failureResult.error.message).toBe('Carga útil corrupta');
+  });
+
+  it('debe validar y persistir la asignación de monitores con AssignDisplaysSchema', () => {
+    const payload = {
+      operatorDisplayId: '12345',
+      publicDisplayId: '67890',
+    };
+    const parseResult = AssignDisplaysSchema.safeParse(payload);
+    expect(parseResult.success).toBe(true);
+
+    if (parseResult.success) {
+      settingsRepo.updateSettings({
+        operatorDisplayId: parseResult.data.operatorDisplayId || undefined,
+        publicDisplayId: parseResult.data.publicDisplayId || undefined,
+      });
+
+      const updated = settingsRepo.getOrCreateSettings();
+      expect(updated.operatorDisplayId).toBe('12345');
+      expect(updated.publicDisplayId).toBe('67890');
+    }
+  });
+
+  it('debe validar la estructura de metadatos de monitor con DisplayInfoSchema', () => {
+    const monitorData: DisplayInfo = {
+      id: '25489',
+      label: 'Pantalla 2 (1920x1080 — Secundaria)',
+      bounds: { x: 1920, y: 0, width: 1920, height: 1080 },
+      isPrimary: false,
+      scaleFactor: 1,
+    };
+    const parseResult = DisplayInfoSchema.safeParse(monitorData);
+    expect(parseResult.success).toBe(true);
   });
 });

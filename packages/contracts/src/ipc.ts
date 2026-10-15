@@ -40,6 +40,8 @@ export const IPC_CHANNELS = {
   DISPLAY_GET_MONITORS: 'display:getMonitors',
   DISPLAY_ASSIGN: 'display:assign',
   DISPLAY_RESCUE_PUBLIC_WINDOW: 'display:rescuePublicWindow',
+  DISPLAY_TOGGLE_PUBLIC_WINDOW: 'display:togglePublicWindow',
+  DISPLAY_GET_PUBLIC_WINDOW_STATUS: 'display:getPublicWindowStatus',
 
   // Eventos Unidireccionales
   EVENT_SCAN_PROGRESS: 'event:library:scanProgress',

@@ -9,8 +9,41 @@
 | **Fase 2** | Biblioteca Local (Carpetas, ffprobe, Watcher, Catálogo, Filtros) | **Completada y Verificada** | 19 pasadas / 0 fallidas |
 | **Fase 3** | Sesión y Cola (Cantantes, Turnos, Reordenar, Transiciones) | **Completada y Verificada** | 29 pasadas / 0 fallidas |
 | **Fase 4** | Reproductor (Protocolo Seguro, Rangos de Bytes, Controles) | **Completada y Verificada** | 47 pasadas / 0 fallidas |
-| **Fase 5** | Segunda Pantalla (Ventana Pública, Monitor Secundario, Desconexión) | Pendiente de Aprobación | — |
+| **Fase 5** | Segunda Pantalla (Ventana Pública, Monitor Secundario, Desconexión) | **Completada y Verificada** | 49 pasadas / 0 fallidas |
 | **Fase 6** | Empaquetado y Validación (Instalador NSIS, Auditoría) | Pendiente | — |
+
+---
+
+## Detalle de la Fase 5 — Segunda Pantalla, Ventana Pública y Gestión de Monitores
+
+### Objetivos Completados
+- [x] Arquitectura de Ventana Pública en Electron (`apps/desktop/src/main/windows/public-window.ts`):
+  - Creación y gestión de `BrowserWindow` secundaria independiente mediante hash routing `#public`.
+  - Blindaje estricto de seguridad: `nodeIntegration: false`, `contextIsolation: true`, `sandbox: true`, `webSecurity: true`, `setWindowOpenHandler: { action: 'deny' }`, `will-navigate: preventDefault`.
+  - Configuración automática a pantalla completa y sin bordes (`fullscreen: true`, `frame: false`) posicionada exactamente sobre el monitor público configurado.
+  - Sincronización de ciclo de vida con la ventana principal del operador y cierre seguro coordinado.
+- [x] Gestión de Monitores e IPC (`apps/desktop/src/main/ipc/display-handlers.ts`):
+  - Detección reactiva de pantallas conectadas con Electron `screen.getAllDisplays()`.
+  - Canales IPC: `display:getMonitors`, `display:assign`, `display:togglePublicWindow`, `display:getPublicWindowStatus`, `display:rescuePublicWindow`.
+  - Evento push en tiempo real `event:monitors:changed` ante conexión, desconexión o cambio de resolución de monitores (`display-added`, `display-removed`, `display-metrics-changed`).
+  - **Rescate Automático ante Desconexión**: Si la pantalla secundaria se desconecta físicamente en pleno show, la ventana pública se traslada y adapta automáticamente a la pantalla principal sin colapsar la aplicación.
+  - **Botón de Rescate Inmediato**: Botón accesible desde la cabecera y el modal de ajustes para forzar el retorno de la ventana pública a la pantalla principal en caso de desajustes del sistema operativo.
+- [x] Componente de Pantalla Pública (`apps/desktop/src/renderer/src/components/PublicScreen.tsx`):
+  - **Modo Reproducción**:
+    - Reproductor de vídeo a pantalla completa alimentado exclusivamente por `karaoke-media://asset/<uuid>`.
+    - Ocultación automática del cursor del ratón tras 2 segundos de inactividad para una experiencia limpia.
+    - Banner introductorio animado durante los primeros 6 segundos con Título, Artista y Cantante.
+    - Reporte de finalización estricto vinculado exclusivamente al evento nativo `ended` del DOM HTML5.
+  - **Modo Cortesía / Ambiente**:
+    - Escena ambiental oscura y sofisticada con iluminación sutil para descansos o pausas entre canciones.
+    - Título de la sesión activa y reloj digital en tiempo real con fecha en español.
+    - Sección "A continuación" mostrando el próximo turno en cola (Título, Artista y Alias del cantante).
+  - **Garantía Innegociable de Privacidad**:
+    - La vista pública no tiene acceso ni proyecta números de mesa, notas internas del operador ni opciones de control.
+- [x] Integración en la Consola del Operador:
+  - Botón e indicador de estado de la pantalla pública en tiempo real en la cabecera (`Header.tsx`).
+  - Selector de monitores primario y secundario con guardado persistente en SQLite en `SettingsModal.tsx`.
+- [x] 49 pruebas unitarias automatizadas pasando limpiamente en todo el monorepo. Typecheck y ESLint pasando con 0 errores.
 
 ---
 

@@ -13,6 +13,7 @@ import { registerSessionHandlers } from './session-handlers.js';
 import { registerLibraryHandlers } from './library-handlers.js';
 import { registerQueueHandlers } from './queue-handlers.js';
 import { registerPlayerHandlers } from './player-handlers.js';
+import { registerDisplayHandlers } from './display-handlers.js';
 
 export interface IpcRepositories {
   settingsRepo: SettingsRepository;
@@ -22,13 +23,22 @@ export interface IpcRepositories {
   queueRepo: QueueRepository;
   playbackRepo: PlaybackRepository;
   watcher: MediaFolderWatcher;
-  getWindow: () => BrowserWindow | null;
+  getOperatorWindow: () => BrowserWindow | null;
+  getPublicWindow: () => BrowserWindow | null;
+  setPublicWindow: (win: BrowserWindow | null) => void;
+  getAllWindows: () => BrowserWindow[];
 }
 
 export function registerAllIpcHandlers(repos: IpcRepositories): void {
   registerSettingsHandlers(repos.settingsRepo);
   registerSessionHandlers(repos.sessionRepo);
-  registerLibraryHandlers(repos.mediaRepo, repos.watcher, repos.getWindow);
-  registerQueueHandlers(repos.queueRepo, repos.singerRepo, repos.sessionRepo, repos.getWindow);
-  registerPlayerHandlers(repos.playbackRepo, repos.queueRepo, repos.mediaRepo, repos.getWindow);
+  registerLibraryHandlers(repos.mediaRepo, repos.watcher, repos.getOperatorWindow);
+  registerQueueHandlers(repos.queueRepo, repos.singerRepo, repos.sessionRepo, repos.getOperatorWindow);
+  registerPlayerHandlers(repos.playbackRepo, repos.queueRepo, repos.mediaRepo, repos.getAllWindows);
+  registerDisplayHandlers(
+    repos.settingsRepo,
+    repos.getOperatorWindow,
+    repos.getPublicWindow,
+    repos.setPublicWindow,
+  );
 }

@@ -2,6 +2,33 @@
 
 Todas las modificaciones notables de este proyecto se documentarán en este archivo.
 
+## [Fase 5] - 2026-10-15
+
+### Añadido
+- Paquete `@karaoke/contracts`:
+  - Nuevos esquemas y DTOs para configuración y gestión de pantallas: `DisplayInfoSchema`, `AssignDisplaysSchema`.
+  - Canales IPC para monitores: `display:getMonitors`, `display:assign`, `display:togglePublicWindow`, `display:getPublicWindowStatus`, `display:rescuePublicWindow`.
+- Aplicación `@karaoke/desktop`:
+  - Gestor de Ventana Pública en `public-window.ts`:
+    - Creación de ventana secundaria `BrowserWindow` con hash routing `#public`.
+    - Posicionamiento a pantalla completa y sin marcos (`frame: false`, `fullscreen: true`) en el monitor seleccionado.
+    - Seguridad estricta: sandbox, sin nodeIntegration, contextIsolation, bloqueo de navegación externa y apertura de popups.
+  - Manejador de IPC de Monitores en `display-handlers.ts`:
+    - Enlace reactivo con Electron `screen` y persistencia de configuración en SQLite (`settings.public_display_id`, `settings.operator_display_id`).
+    - Detección de eventos de conexión/desconexión (`display-added`, `display-removed`, `display-metrics-changed`) y emisión push a la consola.
+    - Rescate automático de la ventana pública a la pantalla principal si el monitor secundario se desconecta durante el uso.
+    - Rescate manual de emergencia a través de IPC `display:rescuePublicWindow`.
+  - Emisión sincronizada a todas las ventanas (`getAllWindows()`) en `player-handlers.ts` para mantener en tiempo real el estado de reproducción en la pantalla pública.
+  - Componente `PublicScreen.tsx`:
+    - Modo Reproducción: Vídeo HTML5 nativo con streaming `karaoke-media://`, cursor ocultable a los 2s, banner introductorio de 6s con título/artista/cantante, y reporte de fin por evento nativo `ended`.
+    - Modo Cortesía: Fondo ambiental atmosférico, reloj digital, nombre de sesión y vista previa de próximo turno "A continuación".
+    - Privacidad absoluta: Cero datos sensibles (mesas, notas, controles) expuestos en la vista del público.
+  - Componentes de interfaz del operador:
+    - Indicador en vivo de estado de pantalla pública y botones de alternancia/rescate en `Header.tsx`.
+    - Selector interactivo de monitores y botón de rescate en `SettingsModal.tsx`.
+  - Enrutamiento por hash (`#public`) en `main.tsx`.
+- Verificación completa: 49 pruebas unitarias pasando en todo el monorepo, 0 errores en typecheck y ESLint.
+
 ## [Fase 4] - 2026-10-15
 
 ### Añadido

@@ -12,6 +12,8 @@ import {
   QueueItemDTO,
   PlayerCommandDTO,
   PlaybackSnapshotDTO,
+  AssignDisplaysDTO,
+  DisplayInfo,
 } from '@karaoke/contracts';
 import { KaraokeAPI } from './types.js';
 
@@ -77,6 +79,18 @@ const api: KaraokeAPI = {
   updatePlayerProgress: (positionMs: number, durationMs?: number) =>
     ipcRenderer.invoke(IPC_CHANNELS.PLAYER_UPDATE_PROGRESS, { positionMs, durationMs }),
 
+  // Gestión de Pantallas y Monitores
+  getMonitors: () =>
+    ipcRenderer.invoke(IPC_CHANNELS.DISPLAY_GET_MONITORS),
+  assignDisplays: (payload: AssignDisplaysDTO) =>
+    ipcRenderer.invoke(IPC_CHANNELS.DISPLAY_ASSIGN, payload),
+  togglePublicWindow: () =>
+    ipcRenderer.invoke(IPC_CHANNELS.DISPLAY_TOGGLE_PUBLIC_WINDOW),
+  getPublicWindowStatus: () =>
+    ipcRenderer.invoke(IPC_CHANNELS.DISPLAY_GET_PUBLIC_WINDOW_STATUS),
+  rescuePublicWindow: () =>
+    ipcRenderer.invoke(IPC_CHANNELS.DISPLAY_RESCUE_PUBLIC_WINDOW),
+
   // Suscripciones a eventos seguros
   onScanProgress: (callback: (payload: unknown) => void) => {
     const handler = (_event: IpcRendererEvent, payload: unknown) => callback(payload);
@@ -103,8 +117,8 @@ const api: KaraokeAPI = {
     };
   },
 
-  onMonitorsChanged: (callback: (payload: unknown) => void) => {
-    const handler = (_event: IpcRendererEvent, payload: unknown) => callback(payload);
+  onMonitorsChanged: (callback: (payload: { monitors: DisplayInfo[] }) => void) => {
+    const handler = (_event: IpcRendererEvent, payload: { monitors: DisplayInfo[] }) => callback(payload);
     ipcRenderer.on(IPC_CHANNELS.EVENT_MONITORS_CHANGED, handler);
     return () => {
       ipcRenderer.removeListener(IPC_CHANNELS.EVENT_MONITORS_CHANGED, handler);

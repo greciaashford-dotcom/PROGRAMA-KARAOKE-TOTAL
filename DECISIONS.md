@@ -49,3 +49,13 @@
 - **Contexto:** Marcar canciones como completadas usando temporizadores aproximados o duraciones estimadas provoca cortes prematuros o estados desincronizados en pistas con silencios o variaciones.
 - **Decisión:** La transición a `COMPLETED` se desencadena exclusivamente mediante el evento nativo del DOM `ended` emitido por el elemento HTML5 `<video>`, canalizado de forma segura vía IPC `player:reportEnded`.
 - **Consecuencias:** Finalización 100% precisa y libre de simulaciones artificiales.
+
+## ADR-011: Ventana Pública Independiente, Pantalla de Cortesía y Rescate Automático de Monitores
+- **Contexto:** El local requiere dos pantallas: la consola privada del operador y la pantalla pública para el público/cantante. Si un monitor HDMI se desconecta accidentalmente, la ventana pública no debe quedar inaccesible ni interrumpir la sesión. Además, en momentos sin música o entre canciones, la pantalla no debe mostrar un escritorio vacío ni exponer información confidencial de la mesa o notas del operador.
+- **Decisión:**
+  1. Instanciar una segunda ventana `BrowserWindow` aislada, controlada por el proceso principal, que utiliza hash routing (`#public`) sobre el mismo bundle seguro de Vite.
+  2. Implementar pantalla de cortesía ambiental automática cuando no hay canción en reproducción, mostrando la hora, la sesión y el próximo cantante.
+  3. Proteger la privacidad del cliente: la vista pública filtra estrictamente cualquier dato sensible (mesas, notas, controles de operador).
+  4. Escuchar eventos de hardware de pantalla (`display-removed`) para rescatar automáticamente la ventana pública al monitor primario si la pantalla externa se desconecta, complementado con un botón manual de rescate ("Rescatar pantalla").
+- **Consecuencias:** Experiencia profesional ininterrumpida para el público, máxima resiliencia ante incidentes con cables o proyectores, y garantía absoluta de privacidad en el local.
+

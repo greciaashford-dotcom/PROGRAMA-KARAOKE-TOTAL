@@ -16,6 +16,8 @@ import {
   CreateSingerDTO,
   PlaybackSnapshotDTO,
   PlayerCommandDTO,
+  DisplayInfo,
+  AssignDisplaysDTO,
 } from '@karaoke/contracts';
 
 export interface PaginatedResult<T> {
@@ -77,11 +79,18 @@ export interface KaraokeAPI {
   reportPlayerEnded: (queueItemId: string) => Promise<Result<PlaybackSnapshotDTO>>;
   updatePlayerProgress: (positionMs: number, durationMs?: number) => Promise<Result<void>>;
 
+  // Gestión de Pantallas y Monitores
+  getMonitors: () => Promise<Result<DisplayInfo[]>>;
+  assignDisplays: (payload: AssignDisplaysDTO) => Promise<Result<void>>;
+  togglePublicWindow: () => Promise<Result<{ isOpen: boolean }>>;
+  getPublicWindowStatus: () => Promise<Result<{ isOpen: boolean }>>;
+  rescuePublicWindow: () => Promise<Result<{ success: boolean; rescued: boolean }>>;
+
   // Suscripciones a eventos seguros
   onScanProgress: (callback: (payload: unknown) => void) => () => void;
   onQueueUpdated: (callback: (payload: { sessionId: string; items: QueueItemDTO[] }) => void) => () => void;
   onPlayerStateChanged: (callback: (snapshot: PlaybackSnapshotDTO) => void) => () => void;
-  onMonitorsChanged: (callback: (payload: unknown) => void) => () => void;
+  onMonitorsChanged: (callback: (payload: { monitors: DisplayInfo[] }) => void) => () => void;
 }
 
 declare global {

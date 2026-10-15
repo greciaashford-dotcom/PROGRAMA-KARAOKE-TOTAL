@@ -14,12 +14,14 @@ export function registerPlayerHandlers(
   playbackRepo: PlaybackRepository,
   queueRepo: QueueRepository,
   mediaRepo: MediaRepository,
-  getWindow: () => BrowserWindow | null,
+  getAllWindows: () => BrowserWindow[],
 ): void {
   const broadcast = (channel: string, data: unknown) => {
-    const win = getWindow();
-    if (win && !win.isDestroyed()) {
-      win.webContents.send(channel, data);
+    const windows = getAllWindows();
+    for (const win of windows) {
+      if (win && !win.isDestroyed()) {
+        win.webContents.send(channel, data);
+      }
     }
   };
 
