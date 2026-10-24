@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer, IpcRendererEvent } from 'electron';
-import {
-  IPC_CHANNELS,
+import type {
+  IPC_CHANNELS as IpcChannelsType,
   UpdateSettingsDTO,
   CatalogQuery,
   UpdateSongDTO,
@@ -15,7 +15,58 @@ import {
   AssignDisplaysDTO,
   DisplayInfo,
 } from '@karaoke/contracts';
-import { KaraokeAPI } from './types.js';
+import type { KaraokeAPI } from './types.js';
+
+// Constantes de canales IPC autocontenidas para compatibilidad estricta con sandbox: true en Electron
+const IPC_CHANNELS: typeof IpcChannelsType = {
+  SETTINGS_GET: 'settings:get',
+  SETTINGS_UPDATE: 'settings:update',
+
+  LIBRARY_SELECT_FOLDER: 'library:selectFolder',
+  LIBRARY_LIST_FOLDERS: 'library:listFolders',
+  LIBRARY_REMOVE_FOLDER: 'library:removeFolder',
+  LIBRARY_TOGGLE_FOLDER: 'library:toggleFolder',
+  LIBRARY_SCAN_FOLDER: 'library:scanFolder',
+  LIBRARY_CANCEL_SCAN: 'library:cancelScan',
+  LIBRARY_LIST_ASSETS: 'library:listAssets',
+  LIBRARY_UPDATE_SONG: 'library:updateSong',
+  LIBRARY_LOCATE_IN_EXPLORER: 'library:locateInExplorer',
+  LIBRARY_REANALYZE_ASSET: 'library:reanalyzeAsset',
+
+  SESSION_GET_CURRENT: 'session:getCurrent',
+  SESSION_OPEN: 'session:open',
+  SESSION_PAUSE: 'session:pause',
+  SESSION_RESUME: 'session:resume',
+  SESSION_CLOSE: 'session:close',
+  SINGER_CREATE: 'singer:create',
+  SINGER_LIST: 'singer:list',
+
+  QUEUE_GET: 'queue:get',
+  QUEUE_ADD: 'queue:add',
+  QUEUE_REORDER: 'queue:reorder',
+  QUEUE_UNDO_REORDER: 'queue:undoReorder',
+  QUEUE_TRANSITION: 'queue:transition',
+  QUEUE_LIST_EVENTS: 'queue:listEvents',
+
+  PLAYER_PREPARE: 'player:prepare',
+  PLAYER_PREVIEW_ASSET: 'player:previewAsset',
+  PLAYER_COMMAND: 'player:command',
+  PLAYER_EMERGENCY_STOP: 'player:emergencyStop',
+  PLAYER_GET_STATE: 'player:getState',
+  PLAYER_REPORT_ENDED: 'player:reportEnded',
+  PLAYER_UPDATE_PROGRESS: 'player:updateProgress',
+
+  DISPLAY_GET_MONITORS: 'display:getMonitors',
+  DISPLAY_ASSIGN: 'display:assign',
+  DISPLAY_RESCUE_PUBLIC_WINDOW: 'display:rescuePublicWindow',
+  DISPLAY_TOGGLE_PUBLIC_WINDOW: 'display:togglePublicWindow',
+  DISPLAY_GET_PUBLIC_WINDOW_STATUS: 'display:getPublicWindowStatus',
+
+  EVENT_SCAN_PROGRESS: 'event:library:scanProgress',
+  EVENT_QUEUE_UPDATED: 'event:queue:updated',
+  EVENT_PLAYER_STATE_CHANGED: 'event:player:stateChanged',
+  EVENT_MONITORS_CHANGED: 'event:display:monitorsChanged',
+};
 
 const api: KaraokeAPI = {
   // Configuración
