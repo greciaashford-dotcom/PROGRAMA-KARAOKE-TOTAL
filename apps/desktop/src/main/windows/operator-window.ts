@@ -1,11 +1,11 @@
-import { BrowserWindow } from 'electron';
+import { app, BrowserWindow } from 'electron';
 import * as path from 'node:path';
 import { enforceWindowSecurity } from '../security.js';
 
 export function createOperatorWindow(): BrowserWindow {
   const isDev = process.env.NODE_ENV === 'development' || !process.env.NODE_ENV;
 
-  const preloadPath = path.resolve(__dirname, '../../preload/operator.js');
+  const preloadPath = path.join(app.getAppPath(), 'dist', 'preload', 'operator.js');
 
   const win = new BrowserWindow({
     width: 1366,
@@ -33,7 +33,7 @@ export function createOperatorWindow(): BrowserWindow {
   if (isDev && process.env.VITE_DEV_SERVER_URL) {
     win.loadURL(process.env.VITE_DEV_SERVER_URL);
   } else {
-    const indexPath = path.resolve(__dirname, '../../renderer/index.html');
+    const indexPath = path.join(app.getAppPath(), 'dist', 'renderer', 'index.html');
     win.loadFile(indexPath);
   }
 

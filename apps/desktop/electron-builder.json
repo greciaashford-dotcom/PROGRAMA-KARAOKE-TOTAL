@@ -11,14 +11,9 @@
   "files": [
     "dist/**/*",
     "node_modules/**/*",
-    "../../packages/*/dist/**/*",
-    "../../packages/*/package.json"
+    "package.json"
   ],
-  "asar": true,
-  "asarUnpack": [
-    "**/node_modules/better-sqlite3/build/Release/*.node",
-    "**/node_modules/ffprobe-static/bin/**"
-  ],
+  "asar": false,
   "win": {
     "target": [
       {

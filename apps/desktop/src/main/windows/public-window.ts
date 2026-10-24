@@ -1,10 +1,10 @@
-import { BrowserWindow, Display, screen } from 'electron';
+import { app, BrowserWindow, Display, screen } from 'electron';
 import * as path from 'node:path';
 import { enforceWindowSecurity } from '../security.js';
 
 export function createPublicWindow(targetDisplay?: Display): BrowserWindow {
   const isDev = process.env.NODE_ENV === 'development' || !process.env.NODE_ENV;
-  const preloadPath = path.resolve(__dirname, '../../preload/operator.js');
+  const preloadPath = path.join(app.getAppPath(), 'dist', 'preload', 'operator.js');
 
   // Si no se especifica pantalla, intentar ubicarla en un segundo monitor no primario
   let displayToUse = targetDisplay;
@@ -51,7 +51,7 @@ export function createPublicWindow(targetDisplay?: Display): BrowserWindow {
   if (isDev && process.env.VITE_DEV_SERVER_URL) {
     win.loadURL(`${process.env.VITE_DEV_SERVER_URL}#public`);
   } else {
-    const indexPath = path.resolve(__dirname, '../../renderer/index.html');
+    const indexPath = path.join(app.getAppPath(), 'dist', 'renderer', 'index.html');
     win.loadFile(indexPath, { hash: 'public' });
   }
 
