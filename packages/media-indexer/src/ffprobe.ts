@@ -80,10 +80,11 @@ export async function analyzeMediaFile(filePath: string): Promise<TechnicalMetad
       }
     }, FFPROBE_TIMEOUT_MS);
 
-    child.on('error', (err) => {
+    child.on('error', () => {
       if (!hasResolved) {
         hasResolved = true;
         clearTimeout(timer);
+        // Si el binario ffprobe no está disponible en el entorno local, permitir reproducción nativa en Chromium
         resolve({
           durationMs: null,
           container: null,
@@ -92,8 +93,7 @@ export async function analyzeMediaFile(filePath: string): Promise<TechnicalMetad
           width: null,
           height: null,
           audioChannels: null,
-          status: 'CORRUPT',
-          incompatibleReason: `Error ejecutando ffprobe: ${err.message}`,
+          status: 'AVAILABLE',
         });
       }
     });
@@ -126,6 +126,9 @@ export async function analyzeMediaFile(filePath: string): Promise<TechnicalMetad
           width?: number;
           height?: number;
           channels?: number;
+          disposition?: {
+            attached_pic?: number;
+          };
         }> = data.streams || [];
 
         const format = data.format || {};
@@ -137,7 +140,14 @@ export async function analyzeMediaFile(filePath: string): Promise<TechnicalMetad
 
         const container: string | null = format.format_name ? format.format_name.split(',')[0] : null;
 
-        const videoStream = streams.find((s) => s.codec_type === 'video');
+        const COVER_IMAGE_CODECS = new Set(['mjpeg', 'png', 'bmp', 'webp', 'gif', 'tiff']);
+        // Ignorar flujos de imagen de portada incrustados (attached_pic) al detectar flujo real de vídeo
+        const videoStream = streams.find(
+          (s) =>
+            s.codec_type === 'video' &&
+            s.disposition?.attached_pic !== 1 &&
+            !COVER_IMAGE_CODECS.has((s.codec_name || '').toLowerCase()),
+        );
         const audioStream = streams.find((s) => s.codec_type === 'audio');
 
         const videoCodec = videoStream?.codec_name ? videoStream.codec_name.toLowerCase() : null;
@@ -150,7 +160,10 @@ export async function analyzeMediaFile(filePath: string): Promise<TechnicalMetad
         let isCompatible = true;
         let incompatibleReason: string | undefined;
 
-        if (videoCodec && !SUPPORTED_VIDEO_CODECS.has(videoCodec)) {
+        if (!videoStream && !audioStream) {
+          isCompatible = false;
+          incompatibleReason = 'El archivo no contiene flujos de audio ni de vídeo.';
+        } else if (videoCodec && !SUPPORTED_VIDEO_CODECS.has(videoCodec)) {
           isCompatible = false;
           incompatibleReason = `Códec de vídeo '${videoCodec}' no compatible con el reproductor web.`;
         } else if (audioCodec && !SUPPORTED_AUDIO_CODECS.has(audioCodec)) {

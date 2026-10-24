@@ -4,6 +4,7 @@ import {
   runMigrations,
   SettingsRepository,
   SessionRepository,
+  MediaRepository,
   KaraokeDatabase,
 } from '@karaoke/database';
 import { Database as DatabaseInstance } from 'better-sqlite3';
@@ -130,5 +131,55 @@ describe('Pruebas de Lógica IPC y Repositorios en Fase 1', () => {
     };
     const parseResult = DisplayInfoSchema.safeParse(monitorData);
     expect(parseResult.success).toBe(true);
+  });
+
+  it('debe permitir pausar y reanudar una sesión activa manteniendo su persistencia', () => {
+    const session = sessionRepo.openSession('Sesión Sábado');
+    expect(session.status).toBe('OPEN');
+
+    const paused = sessionRepo.pauseSession(session.id);
+    expect(paused?.status).toBe('PAUSED');
+    expect(sessionRepo.getLatestActiveSession()?.status).toBe('PAUSED');
+
+    const resumed = sessionRepo.resumeSession(session.id);
+    expect(resumed?.status).toBe('OPEN');
+  });
+
+  it('debe buscar canciones sin importar tildes y reconciliar archivos con portadas incrustadas', () => {
+    const mediaRepo = new MediaRepository(db);
+    const folder = mediaRepo.addFolder('C:\\VideosKaraoke', 'Karaoke Principal');
+
+    mediaRepo.syncScannedBatch(folder.id, [
+      {
+        relativePath: 'Corazon_Espinado.mp4',
+        filename: 'Corazon_Espinado.mp4',
+        extension: '.mp4',
+        sizeBytes: 15000000,
+        modifiedAt: new Date().toISOString(),
+        fingerprint: 'fp1',
+        durationMs: 240000,
+        container: 'mov',
+        videoCodec: 'mjpeg',
+        audioCodec: 'aac',
+        width: 1920,
+        height: 1080,
+        audioChannels: 2,
+        status: 'INCOMPATIBLE',
+        title: 'Corazón Espinado',
+        artist: 'Maná',
+        searchTextNormalized: 'mana corazon espinado',
+      },
+    ]);
+
+    // La búsqueda con tildes ("Corazón", "Maná") debe encontrar el registro normalizado
+    const res = mediaRepo.queryCatalog({ page: 1, pageSize: 20, search: 'Maná Corazón', sortBy: 'title', sortOrder: 'asc' });
+    expect(res.total).toBe(1);
+
+    // La reconciliación debe sanar el falso positivo de portada mjpeg a AVAILABLE
+    const healed = mediaRepo.healFalseIncompatibleAssets();
+    expect(healed).toBe(1);
+
+    const afterHeal = mediaRepo.queryCatalog({ page: 1, pageSize: 20, status: 'AVAILABLE', sortBy: 'title', sortOrder: 'asc' });
+    expect(afterHeal.total).toBe(1);
   });
 });

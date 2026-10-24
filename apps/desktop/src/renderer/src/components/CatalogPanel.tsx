@@ -8,6 +8,9 @@ import {
   ChevronRight,
   Music,
   Plus,
+  Play,
+  StopCircle,
+  X,
 } from 'lucide-react';
 import { SongDTO, MediaFolderDTO, MediaStatus } from '@karaoke/contracts';
 
@@ -17,6 +20,9 @@ interface CatalogPanelProps {
   onEditSong: (song: SongDTO) => void;
   onViewDetails: (song: SongDTO) => void;
   onAddToQueue: (song: SongDTO) => void;
+  onPlayNow: (song: SongDTO) => void;
+  onCancelScan?: (folderId: string) => void;
+  refreshTrigger?: number;
   scanProgress: {
     folderId: string;
     discovered: number;
@@ -33,6 +39,9 @@ export const CatalogPanel: React.FC<CatalogPanelProps> = ({
   onEditSong,
   onViewDetails,
   onAddToQueue,
+  onPlayNow,
+  onCancelScan,
+  refreshTrigger = 0,
   scanProgress,
 }) => {
   const [songs, setSongs] = useState<SongDTO[]>([]);
@@ -42,6 +51,8 @@ export const CatalogPanel: React.FC<CatalogPanelProps> = ({
   const [search, setSearch] = useState<string>('');
   const [selectedFolderId, setSelectedFolderId] = useState<string>('');
   const [selectedStatus, setSelectedStatus] = useState<string>('');
+  const [selectedExtension, setSelectedExtension] = useState<string>('');
+  const [selectedLanguage, setSelectedLanguage] = useState<string>('');
   const [loading, setLoading] = useState<boolean>(false);
 
   const fetchSongs = async () => {
@@ -54,6 +65,8 @@ export const CatalogPanel: React.FC<CatalogPanelProps> = ({
         search: search.trim() || undefined,
         folderId: selectedFolderId || undefined,
         status: (selectedStatus as MediaStatus) || undefined,
+        extension: selectedExtension || undefined,
+        language: selectedLanguage.trim() || undefined,
         sortBy: 'title',
         sortOrder: 'asc',
       });
@@ -71,23 +84,26 @@ export const CatalogPanel: React.FC<CatalogPanelProps> = ({
 
   useEffect(() => {
     fetchSongs();
-  }, [page, selectedFolderId, selectedStatus]);
+  }, [page, selectedFolderId, selectedStatus, selectedExtension, refreshTrigger]);
 
-  // Debounce para búsqueda en vivo
+  // Debounce para búsqueda e idioma en vivo
   useEffect(() => {
     const timer = setTimeout(() => {
       setPage(1);
       fetchSongs();
-    }, 250);
+    }, 200);
     return () => clearTimeout(timer);
-  }, [search]);
+  }, [search, selectedLanguage]);
 
   // Si el escaneo progresa o termina, refrescar catálogo
   useEffect(() => {
-    if (scanProgress?.status === 'COMPLETED') {
+    if (
+      scanProgress?.status === 'COMPLETED' ||
+      (scanProgress?.processed && scanProgress.processed % 10 === 0)
+    ) {
       fetchSongs();
     }
-  }, [scanProgress?.status]);
+  }, [scanProgress?.status, scanProgress?.processed]);
 
   const totalPages = Math.ceil(total / pageSize) || 1;
 
@@ -104,15 +120,15 @@ export const CatalogPanel: React.FC<CatalogPanelProps> = ({
       <div className="panel-header">
         <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           <Music size={18} color="var(--accent-warm)" />
-          Catálogo Local ({total.toLocaleString('es-ES')} canciones)
+          Catálogo Local ({total.toLocaleString('es-ES')} pistas)
         </span>
         <button
           className="btn"
           onClick={onOpenFolderManager}
-          title="Administrar carpetas de karaoke"
-          style={{ height: '36px', minHeight: '36px', fontSize: '13px' }}
+          title="Administrar carpetas de karaoke del PC"
+          style={{ height: '34px', minHeight: '34px', fontSize: '13px', padding: '0 12px' }}
         >
-          <FolderPlus size={16} />
+          <FolderPlus size={15} />
           Carpetas ({folders.length})
         </button>
       </div>
@@ -120,24 +136,38 @@ export const CatalogPanel: React.FC<CatalogPanelProps> = ({
       {scanProgress && scanProgress.status === 'SCANNING' && (
         <div
           style={{
-            backgroundColor: 'var(--bg-surface-raised)',
-            padding: '8px 16px',
-            borderBottom: '1px solid var(--border-subtle)',
+            backgroundColor: 'rgba(217, 119, 6, 0.12)',
+            padding: '10px 16px',
+            borderBottom: '1px solid var(--accent-warm)',
             fontSize: '13px',
           }}
         >
-          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
             <span>
               <strong>Escaneando biblioteca:</strong> {scanProgress.processed} / {scanProgress.discovered} analizados
-              {scanProgress.errors > 0 ? ` (${scanProgress.errors} errores)` : ''}
+              {scanProgress.errors > 0 ? ` (${scanProgress.errors} advertencias)` : ''}
             </span>
-            <span style={{ color: 'var(--text-muted)' }}>{scanProgress.currentFile || ''}</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <span style={{ color: 'var(--text-secondary)', maxWidth: '180px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {scanProgress.currentFile || ''}
+              </span>
+              {onCancelScan && (
+                <button
+                  className="btn"
+                  onClick={() => onCancelScan(scanProgress.folderId)}
+                  style={{ height: '26px', minHeight: '26px', padding: '0 8px', fontSize: '11px', color: 'var(--status-warning)' }}
+                >
+                  <StopCircle size={13} />
+                  Cancelar
+                </button>
+              )}
+            </div>
           </div>
           <div
             style={{
-              height: '4px',
-              backgroundColor: 'var(--border-strong)',
-              borderRadius: '2px',
+              height: '5px',
+              backgroundColor: 'var(--bg-app)',
+              borderRadius: '3px',
               overflow: 'hidden',
             }}
           >
@@ -153,58 +183,121 @@ export const CatalogPanel: React.FC<CatalogPanelProps> = ({
         </div>
       )}
 
-      <div style={{ padding: '12px 16px', display: 'flex', gap: '12px', borderBottom: '1px solid var(--border-subtle)' }}>
-        <div style={{ position: 'relative', flex: 2 }}>
+      {/* Barra de búsqueda y filtros */}
+      <div
+        style={{
+          padding: '10px 14px',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '8px',
+          borderBottom: '1px solid var(--border-subtle)',
+          backgroundColor: 'var(--bg-surface)',
+        }}
+      >
+        <div style={{ position: 'relative', width: '100%' }}>
           <Search
-            size={18}
+            size={17}
             style={{
               position: 'absolute',
               left: '12px',
-              top: '13px',
+              top: '11px',
               color: 'var(--text-muted)',
             }}
           />
           <input
             type="text"
             className="form-input"
-            placeholder="Buscar por artista o título (ej. Queen, Corazón)..."
+            placeholder="Buscar por canción o artista (sin importar tildes o mayúsculas)..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            style={{ width: '100%', paddingLeft: '40px' }}
+            style={{ width: '100%', paddingLeft: '38px', paddingRight: search ? '34px' : '12px', minHeight: '38px', height: '38px', fontSize: '14px' }}
           />
+          {search && (
+            <button
+              type="button"
+              onClick={() => setSearch('')}
+              style={{
+                position: 'absolute',
+                right: '8px',
+                top: '8px',
+                background: 'transparent',
+                border: 'none',
+                color: 'var(--text-muted)',
+                cursor: 'pointer',
+                padding: '4px',
+              }}
+              title="Limpiar búsqueda"
+            >
+              <X size={15} />
+            </button>
+          )}
         </div>
 
-        <select
-          className="form-input"
-          value={selectedFolderId}
-          onChange={(e) => {
-            setSelectedFolderId(e.target.value);
-            setPage(1);
-          }}
-          style={{ flex: 1 }}
-        >
-          <option value="">Todas las carpetas</option>
-          {folders.map((f) => (
-            <option key={f.id} value={f.id}>
-              {f.displayName}
-            </option>
-          ))}
-        </select>
+        <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr 1fr 0.9fr', gap: '6px' }}>
+          <select
+            className="form-input"
+            value={selectedFolderId}
+            onChange={(e) => {
+              setSelectedFolderId(e.target.value);
+              setPage(1);
+            }}
+            style={{ minHeight: '32px', height: '32px', padding: '0 8px', fontSize: '12px' }}
+            title="Filtrar por carpeta"
+          >
+            <option value="">📁 Todas las carpetas</option>
+            {folders.map((f) => (
+              <option key={f.id} value={f.id}>
+                {f.displayName}
+              </option>
+            ))}
+          </select>
 
-        <select
-          className="form-input"
-          value={selectedStatus}
-          onChange={(e) => {
-            setSelectedStatus(e.target.value);
-            setPage(1);
-          }}
-          style={{ flex: 1 }}
-        >
-          <option value="">Todos los estados</option>
-          <option value="AVAILABLE">Disponibles</option>
-          <option value="MISSING">Ausentes</option>
-          <option value="INCOMPATIBLE">Incompatibles</option>
-        </select>
+          <select
+            className="form-input"
+            value={selectedExtension}
+            onChange={(e) => {
+              setSelectedExtension(e.target.value);
+              setPage(1);
+            }}
+            style={{ minHeight: '32px', height: '32px', padding: '0 8px', fontSize: '12px' }}
+            title="Filtrar por formato de archivo"
+          >
+            <option value="">🎬 Todos los formatos</option>
+            <option value=".mp4">Vídeo MP4</option>
+            <option value=".mkv">Vídeo MKV</option>
+            <option value=".webm">Vídeo WEBM</option>
+            <option value=".mov">Vídeo MOV</option>
+            <option value=".mp3">Audio MP3</option>
+            <option value=".wav">Audio WAV</option>
+            <option value=".flac">Audio FLAC</option>
+          </select>
+
+          <select
+            className="form-input"
+            value={selectedStatus}
+            onChange={(e) => {
+              setSelectedStatus(e.target.value);
+              setPage(1);
+            }}
+            style={{ minHeight: '32px', height: '32px', padding: '0 8px', fontSize: '12px' }}
+            title="Filtrar por estado técnico"
+          >
+            <option value="">⚡ Todos los estados</option>
+            <option value="AVAILABLE">Disponibles</option>
+            <option value="MISSING">Ausentes en disco</option>
+            <option value="INCOMPATIBLE">Incompatibles</option>
+          </select>
+
+          <input
+            type="text"
+            className="form-input"
+            placeholder="🌐 Idioma..."
+            value={selectedLanguage}
+            onChange={(e) => setSelectedLanguage(e.target.value)}
+            style={{ minHeight: '32px', height: '32px', padding: '0 8px', fontSize: '12px' }}
+            title="Filtrar por idioma"
+          />
+        </div>
       </div>
 
       <div style={{ flex: 1, overflowY: 'auto' }}>
@@ -221,98 +314,172 @@ export const CatalogPanel: React.FC<CatalogPanelProps> = ({
             ) : folders.length === 0 ? (
               <div>
                 <Music size={40} style={{ opacity: 0.4, marginBottom: '8px' }} />
-                <p>No hay ninguna carpeta de karaoke agregada.</p>
+                <p style={{ fontSize: '15px', fontWeight: 600, color: 'var(--text-primary)' }}>
+                  No hay ninguna carpeta de karaoke agregada.
+                </p>
+                <p style={{ fontSize: '13px', marginTop: '4px' }}>
+                  Selecciona la carpeta donde guardas tus vídeos o canciones en tu PC para reproducirlos al instante.
+                </p>
                 <button
                   className="btn btn-primary"
                   onClick={onOpenFolderManager}
-                  style={{ marginTop: '12px' }}
+                  style={{ marginTop: '14px' }}
                 >
                   <FolderPlus size={18} />
-                  Autorizar mi primera carpeta
+                  Autorizar Carpeta de mi PC
                 </button>
               </div>
             ) : (
-              <p>No se encontraron canciones que coincidan con la búsqueda.</p>
+              <p>No se encontraron canciones que coincidan con los filtros seleccionados.</p>
             )}
           </div>
         ) : (
-          <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '14px' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '13px' }}>
             <thead>
-              <tr style={{ borderBottom: '1px solid var(--border-subtle)', color: 'var(--text-secondary)' }}>
-                <th style={{ padding: '10px 16px' }}>Título / Artista</th>
-                <th style={{ padding: '10px 16px', width: '80px' }}>Duración</th>
-                <th style={{ padding: '10px 16px', width: '80px' }}>Formato</th>
-                <th style={{ padding: '10px 16px', width: '110px' }}>Estado</th>
-                <th style={{ padding: '10px 16px', width: '90px', textAlign: 'right' }}>Acciones</th>
+              <tr
+                style={{
+                  borderBottom: '1px solid var(--border-subtle)',
+                  color: 'var(--text-secondary)',
+                  backgroundColor: 'var(--bg-surface-raised)',
+                  position: 'sticky',
+                  top: 0,
+                  zIndex: 2,
+                }}
+              >
+                <th style={{ padding: '8px 14px' }}>Título / Artista</th>
+                <th style={{ padding: '8px 10px', width: '68px' }}>Duración</th>
+                <th style={{ padding: '8px 10px', width: '72px' }}>Formato</th>
+                <th style={{ padding: '8px 14px', width: '154px', textAlign: 'right' }}>Reproducir / Cola</th>
               </tr>
             </thead>
             <tbody>
-              {songs.map((song) => (
-                <tr
-                  key={song.id}
-                  style={{
-                    borderBottom: '1px solid var(--border-subtle)',
-                    transition: 'background-color 0.1s ease',
-                  }}
-                  className="table-row-hover"
-                >
-                  <td style={{ padding: '10px 16px' }}>
-                    <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{song.title}</div>
-                    <div style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>{song.artist}</div>
-                  </td>
-                  <td style={{ padding: '10px 16px', fontFamily: 'monospace' }}>
-                    {formatDuration(song.asset?.durationMs)}
-                  </td>
-                  <td style={{ padding: '10px 16px', textTransform: 'uppercase', fontSize: '12px', color: 'var(--text-muted)' }}>
-                    {song.asset?.extension?.replace('.', '') || 'N/A'}
-                  </td>
-                  <td style={{ padding: '10px 16px' }}>
-                    <span
-                      className="pill"
-                      style={{
-                        fontSize: '11px',
-                        backgroundColor:
-                          song.asset?.status === 'AVAILABLE'
-                            ? 'var(--status-ready)'
-                            : song.asset?.status === 'MISSING'
-                              ? 'var(--status-warning)'
-                              : 'var(--status-error)',
-                        color: '#18181b',
-                      }}
-                    >
-                      {song.asset?.status || 'UNKNOWN'}
-                    </span>
-                  </td>
-                  <td style={{ padding: '10px 16px', textAlign: 'right' }}>
-                    <div style={{ display: 'inline-flex', gap: '4px' }}>
-                      <button
-                        className="btn btn-icon btn-primary"
-                        onClick={() => onAddToQueue(song)}
-                        title="Añadir canción a la cola de cantantes"
-                        style={{ width: '32px', height: '32px', minWidth: '32px', minHeight: '32px' }}
+              {songs.map((song) => {
+                const isMissing = song.asset?.status === 'MISSING';
+
+                return (
+                  <tr
+                    key={song.id}
+                    onDoubleClick={() => {
+                      if (!isMissing) onPlayNow(song);
+                    }}
+                    title="Doble clic para reproducir inmediatamente"
+                    style={{
+                      borderBottom: '1px solid var(--border-subtle)',
+                      transition: 'background-color 0.12s ease',
+                      cursor: isMissing ? 'not-allowed' : 'pointer',
+                      opacity: isMissing ? 0.55 : 1,
+                    }}
+                    className="table-row-hover"
+                  >
+                    <td style={{ padding: '9px 14px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <span style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: '14px' }}>
+                          {song.title}
+                        </span>
+                        {song.language && (
+                          <span
+                            className="pill"
+                            style={{
+                              fontSize: '9px',
+                              backgroundColor: 'var(--bg-surface-hover)',
+                              color: 'var(--text-secondary)',
+                            }}
+                          >
+                            {song.language}
+                          </span>
+                        )}
+                        {isMissing && (
+                          <span
+                            className="pill"
+                            style={{
+                              fontSize: '9px',
+                              backgroundColor: 'var(--status-error)',
+                              color: '#fff',
+                            }}
+                          >
+                            AUSENTE
+                          </span>
+                        )}
+                      </div>
+                      <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+                        {song.artist}
+                        {song.genre ? ` • ${song.genre}` : ''}
+                      </div>
+                    </td>
+
+                    <td style={{ padding: '9px 10px', fontFamily: 'var(--font-mono)', fontSize: '12px', color: 'var(--text-secondary)' }}>
+                      {formatDuration(song.asset?.durationMs)}
+                    </td>
+
+                    <td style={{ padding: '9px 10px' }}>
+                      <span
+                        className="pill"
+                        style={{
+                          fontSize: '10px',
+                          backgroundColor: 'var(--bg-surface-raised)',
+                          border: '1px solid var(--border-subtle)',
+                          color: 'var(--accent-warm)',
+                        }}
                       >
-                        <Plus size={16} />
-                      </button>
-                      <button
-                        className="btn btn-icon"
-                        onClick={() => onEditSong(song)}
-                        title="Corregir artista o título manualmente"
-                        style={{ width: '32px', height: '32px', minWidth: '32px', minHeight: '32px' }}
+                        {song.asset?.extension?.replace('.', '') || 'MEDIA'}
+                      </span>
+                    </td>
+
+                    <td style={{ padding: '9px 14px', textAlign: 'right' }}>
+                      <div
+                        style={{ display: 'inline-flex', gap: '5px', alignItems: 'center' }}
+                        onClick={(e) => e.stopPropagation()}
                       >
-                        <Edit2 size={15} />
-                      </button>
-                      <button
-                        className="btn btn-icon"
-                        onClick={() => onViewDetails(song)}
-                        title="Ver detalles técnicos del archivo"
-                        style={{ width: '32px', height: '32px', minWidth: '32px', minHeight: '32px' }}
-                      >
-                        <Info size={15} />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
+                        <button
+                          className="btn btn-success"
+                          onClick={() => onPlayNow(song)}
+                          disabled={isMissing}
+                          title="Reproducir este vídeo/canción ahora mismo en el reproductor"
+                          style={{
+                            height: '32px',
+                            minHeight: '32px',
+                            minWidth: '32px',
+                            padding: '0 10px',
+                            fontSize: '12px',
+                            gap: '4px',
+                          }}
+                        >
+                          <Play size={14} fill="currentColor" />
+                          <span>Play</span>
+                        </button>
+
+                        <button
+                          className="btn btn-icon btn-primary"
+                          onClick={() => onAddToQueue(song)}
+                          disabled={isMissing}
+                          title="Añadir a la cola de cantantes"
+                          style={{ width: '32px', height: '32px', minWidth: '32px', minHeight: '32px' }}
+                        >
+                          <Plus size={15} />
+                        </button>
+
+                        <button
+                          className="btn btn-icon"
+                          onClick={() => onEditSong(song)}
+                          title="Editar título, artista, género o idioma"
+                          style={{ width: '30px', height: '30px', minWidth: '30px', minHeight: '30px' }}
+                        >
+                          <Edit2 size={13} />
+                        </button>
+
+                        <button
+                          className="btn btn-icon"
+                          onClick={() => onViewDetails(song)}
+                          title="Ver detalles técnicos y ubicación en disco"
+                          style={{ width: '30px', height: '30px', minWidth: '30px', minHeight: '30px' }}
+                        >
+                          <Info size={13} />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         )}
@@ -326,30 +493,31 @@ export const CatalogPanel: React.FC<CatalogPanelProps> = ({
           padding: '8px 16px',
           backgroundColor: 'var(--bg-surface-raised)',
           borderTop: '1px solid var(--border-subtle)',
-          fontSize: '13px',
+          fontSize: '12px',
+          color: 'var(--text-secondary)',
         }}
       >
         <span>
-          Página {page} de {totalPages} ({total} canciones)
+          Página {page} de {totalPages} • Doble clic o botón <strong>Play</strong> para reproducir al instante
         </span>
-        <div style={{ display: 'flex', gap: '8px' }}>
+        <div style={{ display: 'flex', gap: '6px' }}>
           <button
             className="btn btn-icon"
             onClick={() => setPage((p) => Math.max(1, p - 1))}
             disabled={page <= 1}
-            style={{ width: '36px', height: '36px', minWidth: '36px', minHeight: '36px' }}
+            style={{ width: '32px', height: '32px', minWidth: '32px', minHeight: '32px' }}
             aria-label="Página anterior"
           >
-            <ChevronLeft size={18} />
+            <ChevronLeft size={16} />
           </button>
           <button
             className="btn btn-icon"
             onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
             disabled={page >= totalPages}
-            style={{ width: '36px', height: '36px', minWidth: '36px', minHeight: '36px' }}
+            style={{ width: '32px', height: '32px', minWidth: '32px', minHeight: '32px' }}
             aria-label="Página siguiente"
           >
-            <ChevronRight size={18} />
+            <ChevronRight size={16} />
           </button>
         </div>
       </div>

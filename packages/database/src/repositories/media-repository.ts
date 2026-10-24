@@ -37,6 +37,16 @@ export interface BatchItemInput {
   searchTextNormalized: string;
 }
 
+export function normalizeSearchString(input: string): string {
+  return input
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 export class MediaRepository {
   constructor(private db: KaraokeDatabase) {}
 
@@ -133,6 +143,62 @@ export class MediaRepository {
   public removeFolder(folderId: string): void {
     // Al eliminar la carpeta, la restricción ON DELETE CASCADE de SQLite limpia automáticamente los activos asociados
     this.db.delete(mediaFoldersTable).where(eq(mediaFoldersTable.id, folderId)).run();
+  }
+
+  public toggleFolder(folderId: string, enabled: boolean): MediaFolderDTO | null {
+    const now = new Date().toISOString();
+    this.db
+      .update(mediaFoldersTable)
+      .set({ enabled, updatedAt: now })
+      .where(eq(mediaFoldersTable.id, folderId))
+      .run();
+
+    return this.listFolders().find((f) => f.id === folderId) || null;
+  }
+
+  public updateAssetStatus(assetId: string, status: MediaStatus): void {
+    const now = new Date().toISOString();
+    this.db
+      .update(mediaAssetsTable)
+      .set({ status, updatedAt: now })
+      .where(eq(mediaAssetsTable.id, assetId))
+      .run();
+  }
+
+  /**
+   * Reconcilia activos que pudieron marcarse como INCOMPATIBLE o CORRUPT por portadas incrustadas (mjpeg/png)
+   * o fallos de ejecución de ffprobe en versiones previas.
+   */
+  public healFalseIncompatibleAssets(): number {
+    const rows = this.db
+      .select()
+      .from(mediaAssetsTable)
+      .where(sql`${mediaAssetsTable.status} IN ('INCOMPATIBLE', 'CORRUPT')`)
+      .all();
+
+    let healed = 0;
+    const now = new Date().toISOString();
+    const recoverableVideoCodecs = new Set(['mjpeg', 'png', 'bmp', 'webp', 'gif', 'hevc', 'h265', 'mpeg4', 'theora']);
+
+    this.db.transaction(() => {
+      for (const row of rows) {
+        const vCodec = (row.videoCodec || '').toLowerCase();
+        if (!row.videoCodec || recoverableVideoCodecs.has(vCodec)) {
+          this.db
+            .update(mediaAssetsTable)
+            .set({
+              status: 'AVAILABLE',
+              videoCodec: ['mjpeg', 'png', 'bmp', 'webp', 'gif'].includes(vCodec) ? null : row.videoCodec,
+              updatedAt: now,
+            })
+            .where(eq(mediaAssetsTable.id, row.id))
+            .run();
+          healed++;
+        }
+      }
+    });
+
+    return healed;
   }
 
   /**
@@ -303,15 +369,33 @@ export class MediaRepository {
 
     if (query.folderId) {
       conditions.push(eq(mediaAssetsTable.folderId, query.folderId));
+    } else {
+      conditions.push(eq(mediaFoldersTable.enabled, true));
     }
 
     if (query.status) {
       conditions.push(eq(mediaAssetsTable.status, query.status));
     }
 
+    if (query.extension && query.extension.trim()) {
+      const ext = query.extension.trim().toLowerCase().startsWith('.')
+        ? query.extension.trim().toLowerCase()
+        : `.${query.extension.trim().toLowerCase()}`;
+      conditions.push(eq(mediaAssetsTable.extension, ext));
+    }
+
+    if (query.language && query.language.trim()) {
+      conditions.push(like(songsTable.language, `%${query.language.trim()}%`));
+    }
+
     if (query.search && query.search.trim()) {
-      const cleanTerm = query.search.toLowerCase().trim();
-      conditions.push(like(songsTable.searchTextNormalized, `%${cleanTerm}%`));
+      const cleanTerm = normalizeSearchString(query.search);
+      if (cleanTerm) {
+        const tokens = cleanTerm.split(' ').filter(Boolean);
+        for (const token of tokens) {
+          conditions.push(like(songsTable.searchTextNormalized, `%${token}%`));
+        }
+      }
     }
 
     const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
@@ -321,6 +405,7 @@ export class MediaRepository {
       .select({ count: sql<number>`count(*)` })
       .from(songsTable)
       .innerJoin(mediaAssetsTable, eq(songsTable.mediaAssetId, mediaAssetsTable.id))
+      .innerJoin(mediaFoldersTable, eq(mediaAssetsTable.folderId, mediaFoldersTable.id))
       .where(whereClause)
       .get();
 
@@ -344,6 +429,7 @@ export class MediaRepository {
       })
       .from(songsTable)
       .innerJoin(mediaAssetsTable, eq(songsTable.mediaAssetId, mediaAssetsTable.id))
+      .innerJoin(mediaFoldersTable, eq(mediaAssetsTable.folderId, mediaFoldersTable.id))
       .where(whereClause)
       .orderBy(orderExpr)
       .limit(pageSize)
@@ -396,7 +482,7 @@ export class MediaRepository {
     if (!existing) return null;
 
     const now = new Date().toISOString();
-    const cleanSearch = `${updates.artist} ${updates.title}`.toLowerCase();
+    const cleanSearch = normalizeSearchString(`${updates.artist} ${updates.title}`);
 
     this.db
       .update(songsTable)
@@ -413,23 +499,64 @@ export class MediaRepository {
       .where(eq(songsTable.id, updates.songId))
       .run();
 
-    const updated = this.db.select().from(songsTable).where(eq(songsTable.id, updates.songId)).get();
-    if (!updated) return null;
+    return this.getSongById(updates.songId);
+  }
 
+  public getSongById(songId: string): SongDTO | null {
+    const row = this.db
+      .select({
+        song: songsTable,
+        asset: mediaAssetsTable,
+      })
+      .from(songsTable)
+      .innerJoin(mediaAssetsTable, eq(songsTable.mediaAssetId, mediaAssetsTable.id))
+      .where(eq(songsTable.id, songId))
+      .get();
+
+    if (!row) return null;
+    const { song, asset } = row;
     return {
-      id: updated.id,
-      mediaAssetId: updated.mediaAssetId,
-      title: updated.title,
-      artist: updated.artist,
-      language: updated.language,
-      genre: updated.genre,
-      collection: updated.collection,
-      disc: updated.disc,
-      track: updated.track,
-      metadataSource: updated.metadataSource as 'FILENAME' | 'MANUAL',
-      createdAt: updated.createdAt,
-      updatedAt: updated.updatedAt,
+      id: song.id,
+      mediaAssetId: song.mediaAssetId,
+      title: song.title,
+      artist: song.artist,
+      language: song.language,
+      genre: song.genre,
+      collection: song.collection,
+      disc: song.disc,
+      track: song.track,
+      metadataSource: song.metadataSource as 'FILENAME' | 'MANUAL',
+      asset: {
+        id: asset.id,
+        folderId: asset.folderId,
+        filename: asset.filename,
+        extension: asset.extension,
+        sizeBytes: asset.sizeBytes,
+        durationMs: asset.durationMs,
+        container: asset.container,
+        videoCodec: asset.videoCodec,
+        audioCodec: asset.audioCodec,
+        width: asset.width,
+        height: asset.height,
+        audioChannels: asset.audioChannels,
+        status: asset.status as MediaStatus,
+        lastSeenAt: asset.lastSeenAt,
+        createdAt: asset.createdAt,
+        updatedAt: asset.updatedAt,
+      },
+      createdAt: song.createdAt,
+      updatedAt: song.updatedAt,
     };
+  }
+
+  public getSongByAssetId(assetId: string): SongDTO | null {
+    const row = this.db
+      .select({ id: songsTable.id })
+      .from(songsTable)
+      .where(eq(songsTable.mediaAssetId, assetId))
+      .get();
+    if (!row) return null;
+    return this.getSongById(row.id);
   }
 
   public getAssetById(assetId: string) {

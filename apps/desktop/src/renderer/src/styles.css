@@ -1,31 +1,33 @@
-/* Karaoke Total — Estilos de Consola de Directo */
+/* Karaoke Total — Estilos de Consola Profesional de Directo */
 :root {
-  --bg-app: #121214;
-  --bg-surface: #18181b;
-  --bg-surface-raised: #202024;
-  --bg-surface-hover: #27272a;
-  
-  --border-subtle: #2d2d32;
-  --border-strong: #3f3f46;
-  
-  --text-primary: #f4f4f5;
-  --text-secondary: #a1a1aa;
-  --text-muted: #71717a;
-  
-  /* Acento cálido único */
-  --accent-warm: #d97706;
-  --accent-warm-hover: #b45309;
+  --bg-app: #0c0d10;
+  --bg-surface: #13151a;
+  --bg-surface-raised: #1b1e26;
+  --bg-surface-hover: #252934;
+
+  --border-subtle: #262a36;
+  --border-strong: #393f50;
+
+  --text-primary: #f8fafc;
+  --text-secondary: #94a3b8;
+  --text-muted: #64748b;
+
+  /* Acento cálido principal de estudio */
+  --accent-warm: #f59e0b;
+  --accent-warm-hover: #d97706;
   --accent-warm-light: #fef3c7;
-  --accent-warm-contrast: #18181b;
+  --accent-warm-contrast: #0f172a;
+  --accent-blue: #38bdf8;
 
   /* Estados operativos funcionales */
   --status-ready: #10b981;
+  --status-ready-hover: #059669;
   --status-warning: #f59e0b;
   --status-error: #ef4444;
   --status-emergency: #dc2626;
 
-  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  --font-sans: "Segoe UI", -apple-system, BlinkMacSystemFont, Roboto, Helvetica, Arial, sans-serif;
+  --font-mono: "Cascadia Code", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -42,21 +44,41 @@
   padding: 0;
 }
 
+/* Barras de desplazamiento estilizadas para cabina oscura */
+::-webkit-scrollbar {
+  width: 7px;
+  height: 7px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--bg-surface);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
+}
+
 body {
   font-family: var(--font-sans);
   background-color: var(--bg-app);
   color: var(--text-primary);
-  font-size: 16px;
-  line-height: 1.5;
+  font-size: 15px;
+  line-height: 1.45;
   user-select: none;
   overflow: hidden;
   height: 100vh;
   width: 100vw;
+  -webkit-font-smoothing: antialiased;
 }
 
 /* Foco accesible */
 :focus-visible {
-  outline: 3px solid var(--accent-warm);
+  outline: 2px solid var(--accent-warm);
   outline-offset: 2px;
 }
 
@@ -73,45 +95,52 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  background-color: var(--bg-surface);
+  background: linear-gradient(180deg, #191c24 0%, #13151a 100%);
   border-bottom: 1px solid var(--border-subtle);
   padding: 8px 16px;
-  height: 56px;
+  height: 54px;
   flex-shrink: 0;
 }
 
-.header-left, .header-center, .header-right {
+.header-left,
+.header-center,
+.header-right {
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 14px;
 }
 
 .brand-badge {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-weight: 700;
-  font-size: 18px;
+  font-weight: 800;
+  font-size: 17px;
+  letter-spacing: -0.3px;
   color: var(--text-primary);
 }
 
 .brand-badge .pill {
-  background-color: var(--accent-warm);
+  background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
   color: var(--accent-warm-contrast);
-  font-size: 12px;
+  font-size: 10px;
   font-weight: 800;
-  padding: 2px 6px;
+  padding: 2px 7px;
   border-radius: 4px;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.6px;
 }
 
 .status-indicator {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 14px;
+  font-size: 13px;
   color: var(--text-secondary);
+  background-color: var(--bg-surface-raised);
+  padding: 4px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--border-subtle);
 }
 
 .status-dot {
@@ -119,26 +148,29 @@ body {
   height: 8px;
   border-radius: 50%;
   background-color: var(--status-ready);
+  box-shadow: 0 0 8px var(--status-ready);
 }
 
 .status-dot.warning {
   background-color: var(--status-warning);
+  box-shadow: 0 0 8px var(--status-warning);
 }
 
 .clock-display {
   font-family: var(--font-mono);
-  font-size: 16px;
+  font-size: 14px;
+  font-weight: 700;
   color: var(--text-primary);
-  background-color: var(--bg-surface-raised);
-  padding: 4px 10px;
-  border-radius: 4px;
+  background-color: var(--bg-app);
+  padding: 5px 10px;
+  border-radius: 6px;
   border: 1px solid var(--border-subtle);
 }
 
 /* Paneles Principales */
 .main-grid {
   display: grid;
-  grid-template-columns: 1.4fr 1fr 1fr;
+  grid-template-columns: 1.45fr 1.05fr 1fr;
   flex: 1;
   overflow: hidden;
   gap: 1px;
@@ -156,23 +188,23 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 12px 16px;
+  padding: 10px 14px;
   background-color: var(--bg-surface-raised);
   border-bottom: 1px solid var(--border-subtle);
-  font-size: 15px;
-  font-weight: 600;
-  letter-spacing: 0.3px;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
   color: var(--text-primary);
   text-transform: uppercase;
 }
 
 .panel-content {
   flex: 1;
-  padding: 16px;
+  padding: 14px;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 14px;
 }
 
 /* Barra inferior */
@@ -182,28 +214,28 @@ body {
   justify-content: space-between;
   background-color: var(--bg-surface-raised);
   border-top: 1px solid var(--border-subtle);
-  padding: 8px 16px;
-  height: 60px;
+  padding: 6px 16px;
+  height: 52px;
   flex-shrink: 0;
 }
 
-/* Botones interactivos (mínimo 44x44px) */
+/* Botones interactivos */
 .btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
-  min-height: 44px;
-  min-width: 44px;
-  padding: 0 16px;
+  gap: 6px;
+  min-height: 38px;
+  min-width: 38px;
+  padding: 0 14px;
   border-radius: 6px;
-  font-size: 15px;
+  font-size: 13px;
   font-weight: 600;
   cursor: pointer;
-  border: 1px solid transparent;
+  border: 1px solid var(--border-subtle);
   background-color: var(--bg-surface-raised);
   color: var(--text-primary);
-  transition: background-color 0.15s ease, border-color 0.15s ease;
+  transition: all 0.14s ease;
 }
 
 .btn:hover:not(:disabled) {
@@ -211,73 +243,93 @@ body {
   border-color: var(--border-strong);
 }
 
+.btn:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
 .btn:disabled {
-  opacity: 0.5;
+  opacity: 0.45;
   cursor: not-allowed;
 }
 
 .btn-primary {
-  background-color: var(--accent-warm);
+  background: linear-gradient(180deg, #f59e0b 0%, #d97706 100%);
   color: var(--accent-warm-contrast);
+  border-color: transparent;
+  font-weight: 700;
 }
 
 .btn-primary:hover:not(:disabled) {
-  background-color: var(--accent-warm-hover);
+  background: linear-gradient(180deg, #fbbf24 0%, #f59e0b 100%);
+  border-color: transparent;
+}
+
+.btn-success {
+  background: linear-gradient(180deg, #10b981 0%, #059669 100%);
+  color: #052e16;
+  border-color: transparent;
+  font-weight: 700;
+}
+
+.btn-success:hover:not(:disabled) {
+  background: linear-gradient(180deg, #34d399 0%, #10b981 100%);
   border-color: transparent;
 }
 
 .btn-emergency {
-  background-color: var(--status-emergency);
+  background: linear-gradient(180deg, #ef4444 0%, #dc2626 100%);
   color: #ffffff;
-  font-weight: 700;
+  border-color: #f87171;
+  font-weight: 800;
   letter-spacing: 0.5px;
+  box-shadow: 0 4px 14px rgba(220, 38, 38, 0.35);
 }
 
-.btn-emergency:hover {
-  background-color: #b91c1c;
+.btn-emergency:hover:not(:disabled) {
+  background: linear-gradient(180deg, #dc2626 0%, #b91c1c 100%);
 }
 
 .btn-icon {
   padding: 0;
-  width: 44px;
-  height: 44px;
+  width: 38px;
+  height: 38px;
 }
 
 /* Elementos de Formulario */
 .form-group {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 5px;
 }
 
 .form-label {
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 600;
   color: var(--text-secondary);
 }
 
 .form-input {
-  min-height: 44px;
-  padding: 8px 12px;
-  background-color: var(--bg-surface-raised);
+  min-height: 38px;
+  padding: 6px 12px;
+  background-color: var(--bg-app);
   border: 1px solid var(--border-strong);
   border-radius: 6px;
   color: var(--text-primary);
-  font-size: 15px;
+  font-size: 14px;
+  transition: border-color 0.15s ease;
 }
 
 .form-input:focus {
   border-color: var(--accent-warm);
+  outline: none;
 }
 
 /* Modal */
 .modal-overlay {
   position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background-color: rgba(0, 0, 0, 0.75);
+  inset: 0;
+  background-color: rgba(6, 7, 10, 0.8);
+  backdrop-filter: blur(4px);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -287,23 +339,23 @@ body {
 .modal-content {
   background-color: var(--bg-surface);
   border: 1px solid var(--border-strong);
-  border-radius: 8px;
+  border-radius: 10px;
   width: 520px;
-  max-width: 90vw;
+  max-width: 92vw;
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 24px 48px rgba(0, 0, 0, 0.65);
 }
 
 .modal-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 16px 20px;
+  padding: 14px 20px;
   background-color: var(--bg-surface-raised);
   border-bottom: 1px solid var(--border-subtle);
-  font-weight: 600;
+  font-weight: 700;
 }
 
 .modal-body {
@@ -317,8 +369,8 @@ body {
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  gap: 12px;
-  padding: 16px 20px;
+  gap: 10px;
+  padding: 14px 20px;
   background-color: var(--bg-surface-raised);
   border-top: 1px solid var(--border-subtle);
 }
@@ -332,20 +384,65 @@ body {
 
 .slider-container input[type="range"] {
   flex: 1;
-  height: 8px;
+  height: 6px;
   accent-color: var(--accent-warm);
 }
 
 .pill {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
   padding: 2px 6px;
   border-radius: 4px;
   font-weight: 700;
   text-transform: uppercase;
+  letter-spacing: 0.3px;
 }
 
 .table-row-hover:hover {
   background-color: var(--bg-surface-hover);
+}
+
+/* Ecualizador visual para pistas de solo audio */
+.audio-eq {
+  display: inline-flex;
+  align-items: flex-end;
+  gap: 4px;
+  height: 36px;
+}
+
+.audio-eq .bar {
+  width: 6px;
+  height: 10px;
+  border-radius: 3px;
+  background: var(--accent-warm);
+  transition: height 0.2s ease;
+}
+
+.audio-eq .bar.active:nth-child(1) {
+  animation: eqPulse 0.7s ease-in-out infinite alternate;
+}
+.audio-eq .bar.active:nth-child(2) {
+  animation: eqPulse 0.5s ease-in-out 0.15s infinite alternate;
+}
+.audio-eq .bar.active:nth-child(3) {
+  animation: eqPulse 0.8s ease-in-out 0.3s infinite alternate;
+}
+.audio-eq .bar.active:nth-child(4) {
+  animation: eqPulse 0.6s ease-in-out 0.1s infinite alternate;
+}
+.audio-eq .bar.active:nth-child(5) {
+  animation: eqPulse 0.75s ease-in-out 0.25s infinite alternate;
+}
+
+@keyframes eqPulse {
+  0% {
+    height: 8px;
+    opacity: 0.6;
+  }
+  100% {
+    height: 34px;
+    opacity: 1;
+  }
 }
 
 @keyframes spin {
@@ -358,5 +455,5 @@ body {
 }
 
 .spin {
-  animation: spin 1s linear infinite;
+  animation: spin 1.2s linear infinite;
 }

@@ -114,3 +114,15 @@ export const QueueTransitionSchema = z.object({
   failureReason: z.string().optional(),
 });
 export type QueueTransitionDTO = z.infer<typeof QueueTransitionSchema>;
+
+export const QueueEventDTOSchema = z.object({
+  id: z.string().uuid(),
+  sessionId: z.string().uuid(),
+  queueItemId: z.string().uuid(),
+  eventType: z.string(),
+  previousState: z.string().nullable(),
+  nextState: z.string(),
+  payloadJson: z.string().nullable(),
+  createdAt: z.string(),
+});
+export type QueueEventDTO = z.infer<typeof QueueEventDTOSchema>;

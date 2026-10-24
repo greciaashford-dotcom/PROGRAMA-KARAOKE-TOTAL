@@ -7,6 +7,7 @@ export const IPC_CHANNELS = {
   LIBRARY_SELECT_FOLDER: 'library:selectFolder',
   LIBRARY_LIST_FOLDERS: 'library:listFolders',
   LIBRARY_REMOVE_FOLDER: 'library:removeFolder',
+  LIBRARY_TOGGLE_FOLDER: 'library:toggleFolder',
   LIBRARY_SCAN_FOLDER: 'library:scanFolder',
   LIBRARY_CANCEL_SCAN: 'library:cancelScan',
   LIBRARY_LIST_ASSETS: 'library:listAssets',
@@ -17,6 +18,8 @@ export const IPC_CHANNELS = {
   // Sesión y Cantantes
   SESSION_GET_CURRENT: 'session:getCurrent',
   SESSION_OPEN: 'session:open',
+  SESSION_PAUSE: 'session:pause',
+  SESSION_RESUME: 'session:resume',
   SESSION_CLOSE: 'session:close',
   SINGER_CREATE: 'singer:create',
   SINGER_LIST: 'singer:list',
@@ -27,9 +30,11 @@ export const IPC_CHANNELS = {
   QUEUE_REORDER: 'queue:reorder',
   QUEUE_UNDO_REORDER: 'queue:undoReorder',
   QUEUE_TRANSITION: 'queue:transition',
+  QUEUE_LIST_EVENTS: 'queue:listEvents',
 
   // Reproductor
   PLAYER_PREPARE: 'player:prepare',
+  PLAYER_PREVIEW_ASSET: 'player:previewAsset',
   PLAYER_COMMAND: 'player:command',
   PLAYER_EMERGENCY_STOP: 'player:emergencyStop',
   PLAYER_GET_STATE: 'player:getState',

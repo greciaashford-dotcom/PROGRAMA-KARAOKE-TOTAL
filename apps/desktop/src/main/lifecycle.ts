@@ -77,6 +77,13 @@ export class AppLifecycle {
     this.sqlite = conn.sqlite;
     this.db = conn.db;
 
+    try {
+      const integrity = this.sqlite.pragma('quick_check', { simple: true });
+      console.log(`[Base de Datos] Verificación de integridad (quick_check): ${integrity}`);
+    } catch (integrityErr) {
+      console.error('[Base de Datos] Advertencia en verificación quick_check:', integrityErr);
+    }
+
     const migrationResult = runMigrations(this.sqlite, { dbPath, backupDir });
     console.log(
       `[Base de Datos] Migraciones aplicadas: ${migrationResult.applied.length > 0 ? migrationResult.applied.join(', ') : 'Ninguna nueva'}`,
@@ -88,6 +95,12 @@ export class AppLifecycle {
     const singerRepo = new SingerRepository(this.db);
     const queueRepo = new QueueRepository(this.db);
     const playbackRepo = new PlaybackRepository(this.db);
+
+    // Reconciliar activos que pudieron quedar marcados erróneamente por portadas incrustadas
+    const healedCount = mediaRepo.healFalseIncompatibleAssets();
+    if (healedCount > 0) {
+      console.log(`[Recuperación] Se reconciliaron ${healedCount} archivos multimedia a estado AVAILABLE.`);
+    }
 
     // Registrar protocolo seguro 'karaoke-media://'
     registerMediaProtocol(mediaRepo);

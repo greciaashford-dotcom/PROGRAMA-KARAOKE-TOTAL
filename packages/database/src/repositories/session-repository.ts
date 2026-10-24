@@ -1,4 +1,4 @@
-import { eq, desc } from 'drizzle-orm';
+import { eq, desc, inArray } from 'drizzle-orm';
 import { KaraokeDatabase } from '../connection.js';
 import { karaokeSessionsTable } from '../schema.js';
 import { SessionDTO, SessionStatus } from '@karaoke/contracts';
@@ -11,7 +11,7 @@ export class SessionRepository {
     const row = this.db
       .select()
       .from(karaokeSessionsTable)
-      .where(eq(karaokeSessionsTable.status, 'OPEN'))
+      .where(inArray(karaokeSessionsTable.status, ['OPEN', 'PAUSED']))
       .orderBy(desc(karaokeSessionsTable.openedAt))
       .limit(1)
       .all()[0];
@@ -20,6 +20,24 @@ export class SessionRepository {
       return null;
     }
 
+    return {
+      id: row.id,
+      name: row.name,
+      status: row.status as SessionStatus,
+      openedAt: row.openedAt,
+      closedAt: row.closedAt,
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+    };
+  }
+
+  public getSessionById(sessionId: string): SessionDTO | null {
+    const row = this.db
+      .select()
+      .from(karaokeSessionsTable)
+      .where(eq(karaokeSessionsTable.id, sessionId))
+      .get();
+    if (!row) return null;
     return {
       id: row.id,
       name: row.name,
@@ -57,6 +75,32 @@ export class SessionRepository {
       .run();
 
     return session;
+  }
+
+  public pauseSession(sessionId: string): SessionDTO | null {
+    const now = new Date().toISOString();
+    this.db
+      .update(karaokeSessionsTable)
+      .set({
+        status: 'PAUSED',
+        updatedAt: now,
+      })
+      .where(eq(karaokeSessionsTable.id, sessionId))
+      .run();
+    return this.getSessionById(sessionId);
+  }
+
+  public resumeSession(sessionId: string): SessionDTO | null {
+    const now = new Date().toISOString();
+    this.db
+      .update(karaokeSessionsTable)
+      .set({
+        status: 'OPEN',
+        updatedAt: now,
+      })
+      .where(eq(karaokeSessionsTable.id, sessionId))
+      .run();
+    return this.getSessionById(sessionId);
   }
 
   public closeSession(sessionId: string): void {

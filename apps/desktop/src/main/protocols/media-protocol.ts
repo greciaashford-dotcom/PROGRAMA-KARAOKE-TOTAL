@@ -80,18 +80,45 @@ export function registerMediaProtocol(mediaRepo: MediaRepository): void {
         end: byteRange.end,
       });
 
+      nodeStream.on('error', () => {
+        try {
+          nodeStream.destroy();
+        } catch {
+          // Ignorar error de cierre de stream
+        }
+      });
+
+      if (request.signal) {
+        request.signal.addEventListener(
+          'abort',
+          () => {
+            try {
+              nodeStream.destroy();
+            } catch {
+              // Ignorar al abortar
+            }
+          },
+          { once: true },
+        );
+      }
+
       const webStream = Readable.toWeb(nodeStream) as ReadableStream<Uint8Array>;
       const isPartial = rangeHeader !== null && rangeHeader !== undefined && rangeHeader.trim() !== '';
 
+      const headers: Record<string, string> = {
+        'Content-Type': mimeType,
+        'Content-Length': String(byteRange.chunkSize),
+        'Accept-Ranges': 'bytes',
+        'Cache-Control': 'no-cache',
+      };
+
+      if (isPartial) {
+        headers['Content-Range'] = `bytes ${byteRange.start}-${byteRange.end}/${fileSize}`;
+      }
+
       return new Response(webStream, {
         status: isPartial ? 206 : 200,
-        headers: {
-          'Content-Type': mimeType,
-          'Content-Length': String(byteRange.chunkSize),
-          'Content-Range': `bytes ${byteRange.start}-${byteRange.end}/${fileSize}`,
-          'Accept-Ranges': 'bytes',
-          'Cache-Control': 'no-cache',
-        },
+        headers,
       });
     } catch (err) {
       console.error('[Error en protocolo karaoke-media]:', err);

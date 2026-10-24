@@ -8,6 +8,7 @@ import {
   SongDTO,
   UpdateSongDTO,
   QueueItemDTO,
+  QueueEventDTO,
   AddToQueueDTO,
   ReorderQueueDTO,
   UndoReorderDTO,
@@ -28,14 +29,14 @@ export interface PaginatedResult<T> {
 }
 
 export interface PlayerPrepareResult {
-  success: boolean;
   mediaUrl: string;
-  queueItemId: string;
+  queueItemId: string | null;
   title: string;
   artist: string;
   singerName: string;
   durationMs: number;
   keyShift: number;
+  extension?: string;
   snapshot: PlaybackSnapshotDTO;
 }
 
@@ -47,12 +48,15 @@ export interface KaraokeAPI {
   // Sesión
   getCurrentSession: () => Promise<Result<SessionDTO | null>>;
   openSession: (name: string) => Promise<Result<SessionDTO>>;
+  pauseSession: (sessionId: string) => Promise<Result<SessionDTO>>;
+  resumeSession: (sessionId: string) => Promise<Result<SessionDTO>>;
   closeSession: (sessionId: string) => Promise<Result<void>>;
 
   // Biblioteca y Carpetas
   selectFolder: () => Promise<Result<MediaFolderDTO | null>>;
   listFolders: () => Promise<Result<MediaFolderDTO[]>>;
   removeFolder: (folderId: string) => Promise<Result<void>>;
+  toggleFolder: (folderId: string, enabled: boolean) => Promise<Result<MediaFolderDTO>>;
   scanFolder: (folderId: string) => Promise<Result<{ scanId: string }>>;
   cancelScan: (folderId: string) => Promise<Result<void>>;
   listAssets: (query: CatalogQuery) => Promise<Result<PaginatedResult<SongDTO>>>;
@@ -70,14 +74,16 @@ export interface KaraokeAPI {
   reorderQueue: (payload: ReorderQueueDTO) => Promise<Result<{ success: boolean; previousOrder: string[] }>>;
   undoReorder: (payload: UndoReorderDTO) => Promise<Result<void>>;
   transitionQueue: (payload: QueueTransitionDTO) => Promise<Result<QueueItemDTO>>;
+  listQueueEvents: (sessionId: string) => Promise<Result<QueueEventDTO[]>>;
 
   // Reproductor multimedia y control en vivo
   preparePlayer: (payload: { sessionId: string; queueItemId: string }) => Promise<Result<PlayerPrepareResult>>;
+  previewAsset: (payload: { mediaAssetId: string; sessionId?: string | null }) => Promise<Result<PlayerPrepareResult>>;
   sendPlayerCommand: (command: PlayerCommandDTO) => Promise<Result<PlaybackSnapshotDTO>>;
   emergencyStop: () => Promise<Result<PlaybackSnapshotDTO>>;
   getPlayerState: () => Promise<Result<PlaybackSnapshotDTO>>;
-  reportPlayerEnded: (queueItemId: string) => Promise<Result<PlaybackSnapshotDTO>>;
-  updatePlayerProgress: (positionMs: number, durationMs?: number) => Promise<Result<void>>;
+  reportPlayerEnded: (queueItemId: string | null) => Promise<Result<PlaybackSnapshotDTO>>;
+  updatePlayerProgress: (positionMs: number, durationMs?: number) => Promise<Result<PlaybackSnapshotDTO>>;
 
   // Gestión de Pantallas y Monitores
   getMonitors: () => Promise<Result<DisplayInfo[]>>;

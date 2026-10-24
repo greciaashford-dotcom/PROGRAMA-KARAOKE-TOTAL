@@ -4,6 +4,7 @@ import {
   IPC_CHANNELS,
   CatalogQuerySchema,
   UpdateSongSchema,
+  ToggleFolderSchema,
   ok,
   err,
   ErrorCode,
@@ -31,6 +32,75 @@ export function registerLibraryHandlers(
   getWindow: () => BrowserWindow | null,
 ): void {
   const activeScans = new Map<string, AbortController>();
+
+  const triggerFolderScan = (folderId: string): boolean => {
+    const folder = mediaRepo.getFolderById(folderId);
+    if (!folder || !folder.enabled) return false;
+
+    if (activeScans.has(folderId)) {
+      activeScans.get(folderId)?.abort();
+    }
+
+    const abortController = new AbortController();
+    activeScans.set(folderId, abortController);
+
+    const startTime = new Date().toISOString();
+    mediaRepo.updateFolderScanStatus(folderId, 'SCANNING', startTime, null);
+
+    scanAuthorizedFolder(
+      folderId,
+      folder.absolutePath,
+      (progress) => {
+        const win = getWindow();
+        if (win && !win.isDestroyed()) {
+          win.webContents.send(IPC_CHANNELS.EVENT_SCAN_PROGRESS, progress);
+        }
+      },
+      abortController.signal,
+    )
+      .then(({ items, cancelled }) => {
+        activeScans.delete(folderId);
+        const endTime = new Date().toISOString();
+
+        if (cancelled) {
+          mediaRepo.updateFolderScanStatus(folderId, 'CANCELLED', startTime, endTime);
+        } else {
+          const batchInputs = items.map((i) => ({
+            relativePath: i.relativePath,
+            filename: i.filename,
+            extension: i.extension,
+            sizeBytes: i.sizeBytes,
+            modifiedAt: i.modifiedAt,
+            fingerprint: i.fingerprint,
+            durationMs: i.technical.durationMs,
+            container: i.technical.container,
+            videoCodec: i.technical.videoCodec,
+            audioCodec: i.technical.audioCodec,
+            width: i.technical.width,
+            height: i.technical.height,
+            audioChannels: i.technical.audioChannels,
+            status: i.technical.status,
+            title: i.title,
+            artist: i.artist,
+            searchTextNormalized: i.searchTextNormalized,
+          }));
+
+          mediaRepo.syncScannedBatch(folderId, batchInputs);
+
+          const seenPaths = new Set(items.map((i) => i.relativePath));
+          mediaRepo.reconcileMissingAssets(folderId, seenPaths);
+
+          mediaRepo.updateFolderScanStatus(folderId, 'COMPLETED', startTime, endTime);
+        }
+      })
+      .catch((scanErr) => {
+        activeScans.delete(folderId);
+        console.error(`Fallo en escaneo de carpeta ${folderId}:`, scanErr);
+        mediaRepo.updateFolderScanStatus(folderId, 'FAILED', startTime, new Date().toISOString());
+      });
+
+    return true;
+  };
 
   // 1. Selector de carpeta nativo
   ipcMain.handle(IPC_CHANNELS.LIBRARY_SELECT_FOLDER, async () => {
@@ -65,16 +135,10 @@ export function registerLibraryHandlers(
       const displayName = path.basename(selectedPath) || selectedPath;
       const folder = mediaRepo.addFolder(selectedPath, displayName, 'KARAOKE');
 
-      // Configurar watcher para la nueva carpeta
+      // Configurar watcher para la nueva carpeta con re-escaneo incremental automático
       watcher.watchFolder(folder.id, selectedPath, (event) => {
-        const currentWin = getWindow();
-        if (currentWin && !currentWin.isDestroyed()) {
-          // Si hay cambio detectado por el watcher, notificar a la interfaz
-          currentWin.webContents.send(IPC_CHANNELS.EVENT_SCAN_PROGRESS, {
-            folderId: event.folderId,
-            type: event.type,
-            status: 'COMPLETED',
-          });
+        if (!activeScans.has(event.folderId)) {
+          triggerFolderScan(event.folderId);
         }
       });
 
@@ -105,6 +169,10 @@ export function registerLibraryHandlers(
       }
 
       const { folderId } = parseResult.data;
+      if (activeScans.has(folderId)) {
+        activeScans.get(folderId)?.abort();
+        activeScans.delete(folderId);
+      }
       watcher.unwatchFolder(folderId);
       mediaRepo.removeFolder(folderId);
 
@@ -112,6 +180,38 @@ export function registerLibraryHandlers(
     } catch (error) {
       console.error('Error quitando carpeta:', error);
       return err(ErrorCode.DATABASE_ERROR, 'Error al desautorizar la carpeta.');
+    }
+  });
+
+  // 3b. Habilitar o deshabilitar carpeta autorizada sin desautorizarla
+  ipcMain.handle(IPC_CHANNELS.LIBRARY_TOGGLE_FOLDER, async (_event, rawPayload: unknown) => {
+    try {
+      const parseResult = ToggleFolderSchema.safeParse(rawPayload);
+      if (!parseResult.success) {
+        return err(ErrorCode.VALIDATION_ERROR, 'Parámetros inválidos para cambiar estado de carpeta.');
+      }
+
+      const { folderId, enabled } = parseResult.data;
+      const updated = mediaRepo.toggleFolder(folderId, enabled);
+      if (!updated) {
+        return err(ErrorCode.NOT_FOUND, 'Carpeta no encontrada.');
+      }
+
+      const full = mediaRepo.getFolderById(folderId);
+      if (enabled && full?.absolutePath) {
+        watcher.watchFolder(folderId, full.absolutePath, (event) => {
+          if (!activeScans.has(event.folderId)) {
+            triggerFolderScan(event.folderId);
+          }
+        });
+      } else {
+        watcher.unwatchFolder(folderId);
+      }
+
+      return ok(updated);
+    } catch (error) {
+      console.error('Error cambiando estado de carpeta:', error);
+      return err(ErrorCode.DATABASE_ERROR, 'No se pudo actualizar el estado de la carpeta.');
     }
   });
 
@@ -129,72 +229,11 @@ export function registerLibraryHandlers(
         return err(ErrorCode.NOT_FOUND, 'La carpeta no existe en la base de datos.');
       }
 
-      // Si ya hay un escaneo activo para esta carpeta, cancelarlo antes de iniciar otro
-      if (activeScans.has(folderId)) {
-        activeScans.get(folderId)?.abort();
+      if (!folder.enabled) {
+        mediaRepo.toggleFolder(folderId, true);
       }
 
-      const abortController = new AbortController();
-      activeScans.set(folderId, abortController);
-
-      const startTime = new Date().toISOString();
-      mediaRepo.updateFolderScanStatus(folderId, 'SCANNING', startTime, null);
-
-      // Lanzar escaneo asíncrono
-      scanAuthorizedFolder(
-        folderId,
-        folder.absolutePath,
-        (progress) => {
-          const win = getWindow();
-          if (win && !win.isDestroyed()) {
-            win.webContents.send(IPC_CHANNELS.EVENT_SCAN_PROGRESS, progress);
-          }
-        },
-        abortController.signal,
-      )
-        .then(({ items, cancelled }) => {
-          activeScans.delete(folderId);
-          const endTime = new Date().toISOString();
-
-          if (cancelled) {
-            mediaRepo.updateFolderScanStatus(folderId, 'CANCELLED', startTime, endTime);
-          } else {
-            // Sincronizar lote con SQLite
-            const batchInputs = items.map((i) => ({
-              relativePath: i.relativePath,
-              filename: i.filename,
-              extension: i.extension,
-              sizeBytes: i.sizeBytes,
-              modifiedAt: i.modifiedAt,
-              fingerprint: i.fingerprint,
-              durationMs: i.technical.durationMs,
-              container: i.technical.container,
-              videoCodec: i.technical.videoCodec,
-              audioCodec: i.technical.audioCodec,
-              width: i.technical.width,
-              height: i.technical.height,
-              audioChannels: i.technical.audioChannels,
-              status: i.technical.status,
-              title: i.title,
-              artist: i.artist,
-              searchTextNormalized: i.searchTextNormalized,
-            }));
-
-            mediaRepo.syncScannedBatch(folderId, batchInputs);
-
-            // Reconciliar archivos eliminados
-            const seenPaths = new Set(items.map((i) => i.relativePath));
-            mediaRepo.reconcileMissingAssets(folderId, seenPaths);
-
-            mediaRepo.updateFolderScanStatus(folderId, 'COMPLETED', startTime, endTime);
-          }
-        })
-        .catch((scanErr) => {
-          activeScans.delete(folderId);
-          console.error(`Fallo en escaneo de carpeta ${folderId}:`, scanErr);
-          mediaRepo.updateFolderScanStatus(folderId, 'FAILED', startTime, new Date().toISOString());
-        });
-
+      triggerFolderScan(folderId);
       return ok({ scanId: folderId });
     } catch (error) {
       console.error('Error al iniciar escaneo:', error);

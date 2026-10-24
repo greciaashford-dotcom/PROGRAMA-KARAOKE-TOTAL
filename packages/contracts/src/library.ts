@@ -73,12 +73,20 @@ export const CatalogQuerySchema = z.object({
   search: z.string().optional(),
   folderId: z.string().uuid().optional(),
   status: MediaStatusSchema.optional(),
+  extension: z.string().optional(),
+  language: z.string().optional(),
   page: z.number().int().min(1).default(1),
   pageSize: z.number().int().min(1).max(200).default(50),
   sortBy: z.enum(['title', 'artist', 'createdAt']).default('title'),
   sortOrder: z.enum(['asc', 'desc']).default('asc'),
 });
 export type CatalogQuery = z.infer<typeof CatalogQuerySchema>;
+
+export const ToggleFolderSchema = z.object({
+  folderId: z.string().uuid(),
+  enabled: z.boolean(),
+});
+export type ToggleFolderDTO = z.infer<typeof ToggleFolderSchema>;
 
 export const UpdateSongSchema = z.object({
   songId: z.string().uuid(),

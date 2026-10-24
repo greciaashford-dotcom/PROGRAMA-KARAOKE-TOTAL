@@ -21,13 +21,14 @@ export function registerQueueHandlers(
   queueRepo: QueueRepository,
   singerRepo: SingerRepository,
   sessionRepo: SessionRepository,
-  getWindow: () => BrowserWindow | null,
+  getAllWindows: () => BrowserWindow[],
 ): void {
   const broadcastQueueUpdate = (sessionId: string) => {
-    const win = getWindow();
-    if (win && !win.isDestroyed()) {
-      const items = queueRepo.getQueueForSession(sessionId);
-      win.webContents.send(IPC_CHANNELS.EVENT_QUEUE_UPDATED, { sessionId, items });
+    const items = queueRepo.getQueueForSession(sessionId);
+    for (const win of getAllWindows()) {
+      if (win && !win.isDestroyed()) {
+        win.webContents.send(IPC_CHANNELS.EVENT_QUEUE_UPDATED, { sessionId, items });
+      }
     }
   };
 
@@ -177,6 +178,22 @@ export function registerQueueHandlers(
     } catch (error) {
       console.error('Error al listar cantantes:', error);
       return err(ErrorCode.DATABASE_ERROR, 'Error al consultar los cantantes.');
+    }
+  });
+
+  // 8. Listar historial de eventos de auditoría de la sesión
+  ipcMain.handle(IPC_CHANNELS.QUEUE_LIST_EVENTS, async (_event, rawPayload: unknown) => {
+    try {
+      const parseResult = SessionIdSchema.safeParse(rawPayload);
+      if (!parseResult.success) {
+        return err(ErrorCode.VALIDATION_ERROR, 'ID de sesión inválido.');
+      }
+
+      const events = queueRepo.listSessionEvents(parseResult.data.sessionId);
+      return ok(events);
+    } catch (error) {
+      console.error('Error al listar eventos de sesión:', error);
+      return err(ErrorCode.DATABASE_ERROR, 'Error al consultar el historial de eventos de la sesión.');
     }
   });
 }

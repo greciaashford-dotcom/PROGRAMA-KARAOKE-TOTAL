@@ -33,7 +33,7 @@ export function registerAllIpcHandlers(repos: IpcRepositories): void {
   registerSettingsHandlers(repos.settingsRepo);
   registerSessionHandlers(repos.sessionRepo);
   registerLibraryHandlers(repos.mediaRepo, repos.watcher, repos.getOperatorWindow);
-  registerQueueHandlers(repos.queueRepo, repos.singerRepo, repos.sessionRepo, repos.getOperatorWindow);
+  registerQueueHandlers(repos.queueRepo, repos.singerRepo, repos.sessionRepo, repos.getAllWindows);
   registerPlayerHandlers(repos.playbackRepo, repos.queueRepo, repos.mediaRepo, repos.getAllWindows);
   registerDisplayHandlers(
     repos.settingsRepo,

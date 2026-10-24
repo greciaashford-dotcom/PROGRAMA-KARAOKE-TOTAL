@@ -1,5 +1,14 @@
 import React, { useState } from 'react';
-import { X, FolderPlus, RefreshCw, Trash2, Folder } from 'lucide-react';
+import {
+  X,
+  FolderPlus,
+  RefreshCw,
+  Trash2,
+  Folder,
+  StopCircle,
+  Eye,
+  EyeOff,
+} from 'lucide-react';
 import { MediaFolderDTO } from '@karaoke/contracts';
 
 interface FolderManagerModalProps {
@@ -8,6 +17,8 @@ interface FolderManagerModalProps {
   onClose: () => void;
   onSelectFolder: () => Promise<void>;
   onScanFolder: (folderId: string) => Promise<void>;
+  onCancelScan: (folderId: string) => Promise<void>;
+  onToggleFolder: (folderId: string, enabled: boolean) => Promise<void>;
   onRemoveFolder: (folderId: string) => Promise<void>;
 }
 
@@ -17,6 +28,8 @@ export const FolderManagerModal: React.FC<FolderManagerModalProps> = ({
   onClose,
   onSelectFolder,
   onScanFolder,
+  onCancelScan,
+  onToggleFolder,
   onRemoveFolder,
 }) => {
   const [busyFolderId, setBusyFolderId] = useState<string | null>(null);
@@ -32,8 +45,25 @@ export const FolderManagerModal: React.FC<FolderManagerModalProps> = ({
     }
   };
 
+  const handleCancel = async (folderId: string) => {
+    await onCancelScan(folderId);
+  };
+
+  const handleToggle = async (folderId: string, enabled: boolean) => {
+    setBusyFolderId(folderId);
+    try {
+      await onToggleFolder(folderId, enabled);
+    } finally {
+      setBusyFolderId(null);
+    }
+  };
+
   const handleRemove = async (folderId: string) => {
-    if (window.confirm('¿Deseas desautorizar esta carpeta? Los archivos físicos no se borrarán del disco.')) {
+    if (
+      window.confirm(
+        '¿Deseas desautorizar esta carpeta del catálogo? Tus archivos físicos en el ordenador NUNCA se borrarán.',
+      )
+    ) {
       setBusyFolderId(folderId);
       try {
         await onRemoveFolder(folderId);
@@ -45,7 +75,7 @@ export const FolderManagerModal: React.FC<FolderManagerModalProps> = ({
 
   return (
     <div className="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="folder-modal-title">
-      <div className="modal-content" style={{ width: '650px' }}>
+      <div className="modal-content" style={{ width: '720px', maxWidth: '94vw' }}>
         <div className="modal-header">
           <h2 id="folder-modal-title" style={{ fontSize: '18px', fontWeight: 600 }}>
             Gestión de Carpetas Autorizadas
@@ -56,17 +86,17 @@ export const FolderManagerModal: React.FC<FolderManagerModalProps> = ({
         </div>
 
         <div className="modal-body">
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px' }}>
             <p style={{ fontSize: '14px', color: 'var(--text-secondary)' }}>
-              Solo los vídeos de las carpetas explícitamente autorizadas se indexan y reproducen.
+              Autoriza las carpetas de tu PC donde guardas tus vídeos o pistas de karaoke. Puedes activarlas o desactivarlas en cualquier momento.
             </p>
-            <button className="btn btn-primary" onClick={onSelectFolder}>
+            <button className="btn btn-primary" onClick={onSelectFolder} style={{ whiteSpace: 'nowrap' }}>
               <FolderPlus size={18} />
               Añadir Carpeta
             </button>
           </div>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '350px', overflowY: 'auto' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '380px', overflowY: 'auto' }}>
             {folders.length === 0 ? (
               <div
                 style={{
@@ -79,7 +109,9 @@ export const FolderManagerModal: React.FC<FolderManagerModalProps> = ({
               >
                 <Folder size={36} style={{ marginBottom: '8px', opacity: 0.5 }} />
                 <p>No hay ninguna carpeta de karaoke autorizada.</p>
-                <p style={{ fontSize: '13px' }}>Pulsa &quot;Añadir Carpeta&quot; para seleccionar vídeos del ordenador.</p>
+                <p style={{ fontSize: '13px' }}>
+                  Pulsa &quot;Añadir Carpeta&quot; para seleccionar vídeos del ordenador.
+                </p>
               </div>
             ) : (
               folders.map((folder) => {
@@ -96,11 +128,12 @@ export const FolderManagerModal: React.FC<FolderManagerModalProps> = ({
                       border: '1px solid var(--border-subtle)',
                       borderRadius: '6px',
                       padding: '12px 16px',
+                      opacity: folder.enabled ? 1 : 0.65,
                     }}
                   >
                     <div>
                       <div style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <Folder size={18} color="var(--accent-warm)" />
+                        <Folder size={18} color={folder.enabled ? 'var(--accent-warm)' : 'var(--text-muted)'} />
                         <span>{folder.displayName}</span>
                         <span
                           className="pill"
@@ -117,6 +150,18 @@ export const FolderManagerModal: React.FC<FolderManagerModalProps> = ({
                         >
                           {folder.scanStatus}
                         </span>
+                        {!folder.enabled && (
+                          <span
+                            className="pill"
+                            style={{
+                              fontSize: '10px',
+                              backgroundColor: 'var(--bg-surface-hover)',
+                              color: 'var(--text-muted)',
+                            }}
+                          >
+                            OCULTA
+                          </span>
+                        )}
                       </div>
                       <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '4px' }}>
                         {folder.lastScanCompletedAt
@@ -125,25 +170,55 @@ export const FolderManagerModal: React.FC<FolderManagerModalProps> = ({
                       </div>
                     </div>
 
-                    <div style={{ display: 'flex', gap: '8px' }}>
+                    <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
                       <button
                         className="btn"
-                        onClick={() => handleScan(folder.id)}
+                        onClick={() => handleToggle(folder.id, !folder.enabled)}
                         disabled={isScanning}
-                        title="Reescanear carpeta"
+                        title={folder.enabled ? 'Deshabilitar carpeta temporalmente' : 'Habilitar carpeta en el catálogo'}
+                        style={{ height: '36px', minHeight: '36px', fontSize: '13px', padding: '0 10px' }}
                       >
-                        <RefreshCw size={16} className={isScanning ? 'spin' : ''} />
-                        Reescanear
+                        {folder.enabled ? <Eye size={15} /> : <EyeOff size={15} />}
+                        {folder.enabled ? 'Activa' : 'Inactiva'}
                       </button>
 
+                      {folder.scanStatus === 'SCANNING' ? (
+                        <button
+                          className="btn"
+                          onClick={() => handleCancel(folder.id)}
+                          title="Cancelar escaneo en curso"
+                          style={{
+                            height: '36px',
+                            minHeight: '36px',
+                            fontSize: '13px',
+                            padding: '0 10px',
+                            color: 'var(--status-warning)',
+                          }}
+                        >
+                          <StopCircle size={15} />
+                          Cancelar
+                        </button>
+                      ) : (
+                        <button
+                          className="btn"
+                          onClick={() => handleScan(folder.id)}
+                          disabled={isScanning}
+                          title="Reescanear carpeta"
+                          style={{ height: '36px', minHeight: '36px', fontSize: '13px', padding: '0 10px' }}
+                        >
+                          <RefreshCw size={15} className={isScanning ? 'spin' : ''} />
+                          Reescanear
+                        </button>
+                      )}
+
                       <button
-                        className="btn"
+                        className="btn btn-icon"
                         onClick={() => handleRemove(folder.id)}
                         disabled={isScanning}
                         title="Desautorizar carpeta"
-                        style={{ color: 'var(--status-error)' }}
+                        style={{ color: 'var(--status-error)', width: '36px', height: '36px', minWidth: '36px', minHeight: '36px' }}
                       >
-                        <Trash2 size={16} />
+                        <Trash2 size={15} />
                       </button>
                     </div>
                   </div>

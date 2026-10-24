@@ -5,18 +5,24 @@ import {
   QueueItemDTO,
   SessionDTO,
 } from '@karaoke/contracts';
-import { Mic, Disc, Clock, Music } from 'lucide-react';
+import { Mic, Disc, Clock, Music, Pause } from 'lucide-react';
 
 export const PublicScreen: React.FC = () => {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [playbackState, setPlaybackState] = useState<PlaybackStatus>('IDLE');
+  const playbackStateRef = useRef<PlaybackStatus>('IDLE');
+  const volumeRef = useRef<number>(100);
+  const positionMsRef = useRef<number>(0);
+
   const [currentMediaUrl, setCurrentMediaUrl] = useState<string | null>(null);
+  const currentMediaUrlRef = useRef<string | null>(null);
   const [currentQueueItem, setCurrentQueueItem] = useState<QueueItemDTO | null>(null);
   const [nextQueueItem, setNextQueueItem] = useState<QueueItemDTO | null>(null);
   const [session, setSession] = useState<SessionDTO | null>(null);
   const [currentTimeStr, setCurrentTimeStr] = useState<string>('');
   const [showIntroBanner, setShowIntroBanner] = useState<boolean>(true);
   const [isCursorHidden, setIsCursorHidden] = useState<boolean>(false);
+  const [isAudioOnlyTrack, setIsAudioOnlyTrack] = useState<boolean>(false);
   const cursorTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Reloj local en tiempo real para pantalla de cortesía
@@ -80,7 +86,7 @@ export const PublicScreen: React.FC = () => {
     });
 
     const unsubQueue = window.karaokeAPI.onQueueUpdated((payload) => {
-      if (payload && payload.items) {
+      if (payload && Array.isArray(payload.items)) {
         updateQueueItems(payload.items);
       }
     });
@@ -92,31 +98,36 @@ export const PublicScreen: React.FC = () => {
   }, []);
 
   const updateQueueItems = (items: QueueItemDTO[]) => {
-    const activePlaying = items.find((i) => i.status === 'PLAYING' || i.status === 'READY');
-    if (activePlaying) {
-      setCurrentQueueItem(activePlaying);
-    }
+    const activePlaying = items.find(
+      (i) => i.status === 'PLAYING' || i.status === 'PAUSED' || i.status === 'READY',
+    );
+    setCurrentQueueItem(activePlaying || null);
 
     const pending = items.filter(
-      (i) => !['COMPLETED', 'CANCELLED', 'SKIPPED', 'PLAYING'].includes(i.status),
+      (i) => !['COMPLETED', 'CANCELLED', 'SKIPPED', 'FAILED', 'PLAYING'].includes(i.status),
     );
     setNextQueueItem(pending[0] || null);
   };
 
   const handleSnapshot = (snapshot: PlaybackSnapshotDTO) => {
+    playbackStateRef.current = snapshot.state;
+    volumeRef.current = snapshot.volume;
+    positionMsRef.current = snapshot.positionMs;
     setPlaybackState(snapshot.state);
 
     if (snapshot.mediaAssetId) {
       const url = `karaoke-media://asset/${snapshot.mediaAssetId}`;
-      if (currentMediaUrl !== url) {
+      if (currentMediaUrlRef.current !== url) {
+        currentMediaUrlRef.current = url;
         setCurrentMediaUrl(url);
+        setIsAudioOnlyTrack(false);
         setShowIntroBanner(true);
-        // Ocultar banner de presentación tras 6 segundos
         setTimeout(() => {
           setShowIntroBanner(false);
         }, 6000);
       }
     } else {
+      currentMediaUrlRef.current = null;
       setCurrentMediaUrl(null);
     }
 
@@ -127,7 +138,6 @@ export const PublicScreen: React.FC = () => {
         if (videoRef.current.paused) {
           videoRef.current.play().catch(console.error);
         }
-        // Resincronizar si hay desvío superior a 1.5s
         const drift = Math.abs(videoRef.current.currentTime * 1000 - snapshot.positionMs);
         if (drift > 1500) {
           videoRef.current.currentTime = snapshot.positionMs / 1000;
@@ -143,6 +153,23 @@ export const PublicScreen: React.FC = () => {
     }
   };
 
+  const handleCanPlay = () => {
+    if (!videoRef.current) return;
+    videoRef.current.volume = volumeRef.current / 100;
+    if (videoRef.current.videoWidth === 0 && videoRef.current.videoHeight === 0) {
+      setIsAudioOnlyTrack(true);
+    } else {
+      setIsAudioOnlyTrack(false);
+    }
+
+    if (playbackStateRef.current === 'PLAYING' && videoRef.current.paused) {
+      if (positionMsRef.current > 1000) {
+        videoRef.current.currentTime = positionMsRef.current / 1000;
+      }
+      videoRef.current.play().catch(console.error);
+    }
+  };
+
   /**
    * INNEGOCIABLE: La pista finaliza al recibir el evento nativo del DOM HTML5 'ended'.
    */
@@ -152,9 +179,8 @@ export const PublicScreen: React.FC = () => {
     }
   };
 
-  const isVideoVisible =
-    (playbackState === 'PLAYING' || playbackState === 'PAUSED' || playbackState === 'READY') &&
-    !!currentMediaUrl;
+  const isVideoActive =
+    (playbackState === 'PLAYING' || playbackState === 'PAUSED') && !!currentMediaUrl;
 
   return (
     <div
@@ -178,18 +204,71 @@ export const PublicScreen: React.FC = () => {
           ref={videoRef}
           src={currentMediaUrl}
           playsInline
+          onCanPlay={handleCanPlay}
           onEnded={handleNativeEnded}
           style={{
             width: '100%',
             height: '100%',
             objectFit: 'contain',
-            display: isVideoVisible ? 'block' : 'none',
+            display: isVideoActive ? 'block' : 'none',
           }}
         />
       )}
 
+      {/* Visualizador en pantalla pública cuando la pista es solo de audio */}
+      {isVideoActive && isAudioOnlyTrack && (
+        <div
+          style={{
+            position: 'absolute',
+            inset: 0,
+            background: 'radial-gradient(circle at center, #1f2430 0%, #090b10 100%)',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '24px',
+            zIndex: 5,
+          }}
+        >
+          <Disc size={96} color="#f59e0b" className={playbackState === 'PLAYING' ? 'spin' : ''} />
+          <div style={{ fontSize: '46px', fontWeight: 900, textAlign: 'center' }}>
+            {currentQueueItem?.song?.title || 'En Reproducción'}
+          </div>
+          <div style={{ fontSize: '26px', color: '#94a3b8' }}>
+            {currentQueueItem?.song?.artist || ''}
+          </div>
+        </div>
+      )}
+
+      {/* Indicador discreto de PAUSA */}
+      {isVideoActive && playbackState === 'PAUSED' && (
+        <div
+          style={{
+            position: 'absolute',
+            top: '36px',
+            right: '40px',
+            backgroundColor: 'rgba(15, 23, 42, 0.85)',
+            backdropFilter: 'blur(8px)',
+            border: '2px solid #f59e0b',
+            color: '#f59e0b',
+            padding: '10px 20px',
+            borderRadius: '10px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '10px',
+            fontSize: '20px',
+            fontWeight: 800,
+            letterSpacing: '1px',
+            zIndex: 20,
+          }}
+        >
+          <Pause size={22} />
+          <span>EN PAUSA</span>
+        </div>
+      )}
+
       {/* Banner de Presentación Inicial (Fade out tras 6s) */}
-      {isVideoVisible && showIntroBanner && currentQueueItem?.song && currentQueueItem?.singer && (
+      {isVideoActive && showIntroBanner && currentQueueItem?.song && currentQueueItem?.singer && (
         <div
           style={{
             position: 'absolute',
@@ -197,12 +276,11 @@ export const PublicScreen: React.FC = () => {
             left: '40px',
             backgroundColor: 'rgba(10, 12, 16, 0.85)',
             backdropFilter: 'blur(10px)',
-            borderLeft: '5px solid var(--accent-warm, #f59e0b)',
+            borderLeft: '5px solid #f59e0b',
             padding: '16px 24px',
             borderRadius: '0 8px 8px 0',
             boxShadow: '0 8px 32px rgba(0,0,0,0.6)',
-            animation: 'fadeIn 0.5s ease-out',
-            zIndex: 10,
+            zIndex: 15,
           }}
         >
           <div style={{ fontSize: '14px', textTransform: 'uppercase', color: '#f59e0b', fontWeight: 700, letterSpacing: '1px' }}>
@@ -216,13 +294,15 @@ export const PublicScreen: React.FC = () => {
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '10px', fontSize: '16px', color: '#93c5fd' }}>
             <Mic size={18} />
-            <span>Cantante: <strong>{currentQueueItem.singer.displayName}</strong></span>
+            <span>
+              Cantante: <strong>{currentQueueItem.singer.displayName}</strong>
+            </span>
           </div>
         </div>
       )}
 
-      {/* 2. Pantalla de Cortesía y Espera (Ambiental entre canciones) */}
-      {!isVideoVisible && (
+      {/* 2. Pantalla de Cortesía / Preparación de Cantante (Cuando no hay vídeo reproduciéndose) */}
+      {!isVideoActive && (
         <div
           style={{
             width: '100%',
@@ -262,17 +342,30 @@ export const PublicScreen: React.FC = () => {
               </div>
             </div>
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '26px', fontWeight: 700, color: '#e2e8f0', fontFamily: 'monospace' }}>
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '10px',
+                fontSize: '26px',
+                fontWeight: 700,
+                color: '#e2e8f0',
+                fontFamily: 'monospace',
+              }}
+            >
               <Clock size={28} color="#38bdf8" />
               <span>{currentTimeStr}</span>
             </div>
           </div>
 
-          {/* Zona Central: Próxima Actuación o Mensaje de Bienvenida */}
+          {/* Zona Central: Pista Preparada (READY) o Próxima Actuación */}
           <div
             style={{
               backgroundColor: 'rgba(255, 255, 255, 0.04)',
-              border: '1px solid rgba(255, 255, 255, 0.08)',
+              border:
+                playbackState === 'READY'
+                  ? '2px solid #10b981'
+                  : '1px solid rgba(255, 255, 255, 0.08)',
               borderRadius: '16px',
               padding: '40px 48px',
               maxWidth: '850px',
@@ -283,7 +376,49 @@ export const PublicScreen: React.FC = () => {
               textAlign: 'center',
             }}
           >
-            {nextQueueItem?.song && nextQueueItem?.singer ? (
+            {playbackState === 'READY' && currentQueueItem?.song && currentQueueItem?.singer ? (
+              <>
+                <div
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    backgroundColor: 'rgba(16, 185, 129, 0.2)',
+                    color: '#10b981',
+                    padding: '6px 18px',
+                    borderRadius: '20px',
+                    fontSize: '16px',
+                    fontWeight: 800,
+                    textTransform: 'uppercase',
+                    letterSpacing: '1px',
+                    marginBottom: '20px',
+                  }}
+                >
+                  <Mic size={18} />
+                  ¡Preparado! Sube al escenario
+                </div>
+
+                <div style={{ fontSize: '46px', fontWeight: 900, color: '#f8fafc', marginBottom: '10px' }}>
+                  {currentQueueItem.singer.displayName}
+                </div>
+
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '8px',
+                    fontSize: '26px',
+                    color: '#cbd5e1',
+                  }}
+                >
+                  <Music size={24} color="#f59e0b" />
+                  <span>
+                    <strong>{currentQueueItem.song.title}</strong> — {currentQueueItem.song.artist}
+                  </span>
+                </div>
+              </>
+            ) : nextQueueItem?.song && nextQueueItem?.singer ? (
               <>
                 <div
                   style={{
@@ -309,7 +444,16 @@ export const PublicScreen: React.FC = () => {
                   {nextQueueItem.singer.displayName}
                 </div>
 
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', fontSize: '24px', color: '#cbd5e1' }}>
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '8px',
+                    fontSize: '24px',
+                    color: '#cbd5e1',
+                  }}
+                >
                   <Music size={22} color="#f59e0b" />
                   <span>
                     <strong>{nextQueueItem.song.title}</strong> — {nextQueueItem.song.artist}

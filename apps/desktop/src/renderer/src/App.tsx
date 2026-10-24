@@ -10,17 +10,19 @@ import { EditSongModal } from './components/EditSongModal.js';
 import { SongDetailsModal } from './components/SongDetailsModal.js';
 import { AddToQueueModal } from './components/AddToQueueModal.js';
 import { AddSingerModal } from './components/AddSingerModal.js';
+import { SetupWizardModal } from './components/SetupWizardModal.js';
 import {
   SettingsDTO,
   UpdateSettingsDTO,
   SessionDTO,
   MediaFolderDTO,
   SongDTO,
+  UpdateSongDTO,
   QueueItemDTO,
   SingerDTO,
   QueueStatus,
 } from '@karaoke/contracts';
-import { AlertOctagon } from 'lucide-react';
+import { AlertOctagon, CheckCircle2, AlertTriangle } from 'lucide-react';
 import { PlayerPrepareResult } from '../../preload/types.js';
 
 export const App: React.FC = () => {
@@ -32,10 +34,12 @@ export const App: React.FC = () => {
   const [previousOrder, setPreviousOrder] = useState<string[] | null>(null);
   const [preparedTrack, setPreparedTrack] = useState<PlayerPrepareResult | null>(null);
   const [isPublicScreenOpen, setIsPublicScreenOpen] = useState<boolean>(false);
+  const [catalogRefreshTrigger, setCatalogRefreshTrigger] = useState<number>(0);
 
   // Modales
   const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
   const [isFolderManagerOpen, setIsFolderManagerOpen] = useState<boolean>(false);
+  const [isWizardOpen, setIsWizardOpen] = useState<boolean>(false);
   const [editingSong, setEditingSong] = useState<SongDTO | null>(null);
   const [detailsSong, setDetailsSong] = useState<SongDTO | null>(null);
   const [addingToQueueSong, setAddingToQueueSong] = useState<SongDTO | null>(null);
@@ -52,14 +56,28 @@ export const App: React.FC = () => {
   } | null>(null);
 
   const [loading, setLoading] = useState<boolean>(true);
-  const [notification, setNotification] = useState<string>('Consola lista para directo.');
+  const [notification, setNotification] = useState<string>('Consola lista para reproducir.');
+  const [toast, setToast] = useState<{ text: string; type: 'info' | 'error' } | null>(null);
+
+  const showNotice = (msg: string, type: 'info' | 'error' = 'info') => {
+    setNotification(msg);
+    setToast({ text: msg, type });
+  };
+
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), 4000);
+    return () => clearTimeout(t);
+  }, [toast]);
 
   const refreshFolders = async () => {
-    if (!window.karaokeAPI) return;
+    if (!window.karaokeAPI) return [];
     const res = await window.karaokeAPI.listFolders();
     if (res.success) {
       setFolders(res.data);
+      return res.data;
     }
+    return [];
   };
 
   const refreshQueue = async (sessionId: string) => {
@@ -94,7 +112,10 @@ export const App: React.FC = () => {
             await refreshSingers(sessionRes.data.id);
           }
 
-          await refreshFolders();
+          const loadedFolders = await refreshFolders();
+          if (loadedFolders.length === 0) {
+            setIsWizardOpen(true);
+          }
 
           // Suscribirse a eventos de escaneo
           window.karaokeAPI.onScanProgress((payload: unknown) => {
@@ -108,28 +129,31 @@ export const App: React.FC = () => {
             };
             setScanProgress(p);
             if (p.status === 'COMPLETED') {
-              setNotification(`Escaneo completado: ${p.processed} archivos procesados.`);
+              showNotice(`Escaneo completado: ${p.processed ?? 0} archivos listos.`);
               refreshFolders();
+              setCatalogRefreshTrigger((n) => n + 1);
             } else if (p.status === 'CANCELLED') {
-              setNotification('Escaneo cancelado por el operador.');
+              showNotice('Escaneo cancelado por el operador.');
               refreshFolders();
             }
           });
 
-          // Suscribirse a actualizaciones de cola
+          // Suscribirse a actualizaciones de cola (validando siempre que items sea array)
           window.karaokeAPI.onQueueUpdated((payload) => {
-            setQueue(payload.items);
+            if (payload && Array.isArray(payload.items)) {
+              setQueue(payload.items);
+            }
           });
 
           // Estado inicial de la pantalla pública
           const pubStatusRes = await window.karaokeAPI.getPublicWindowStatus();
-          if (pubStatusRes.success) {
+          if (pubStatusRes.success && pubStatusRes.data) {
             setIsPublicScreenOpen(pubStatusRes.data.isOpen);
           }
 
           // Escuchar cambios de pantallas en caliente
           window.karaokeAPI.onMonitorsChanged(() => {
-            setNotification('Monitores actualizados (cambio en caliente).');
+            showNotice('Monitores actualizados (cambio en caliente detectado).');
           });
         }
       } catch (err) {
@@ -147,7 +171,7 @@ export const App: React.FC = () => {
     const res = await window.karaokeAPI.updateSettings(updates);
     if (res.success) {
       setSettings(res.data);
-      setNotification('Configuración guardada en SQLite.');
+      showNotice('Configuración guardada en SQLite.');
     }
   };
 
@@ -156,9 +180,27 @@ export const App: React.FC = () => {
     const res = await window.karaokeAPI.openSession(name);
     if (res.success) {
       setCurrentSession(res.data);
-      setNotification(`Sesión "${res.data.name}" abierta.`);
+      showNotice(`Sesión "${res.data.name}" abierta.`);
       await refreshQueue(res.data.id);
       await refreshSingers(res.data.id);
+    }
+  };
+
+  const handlePauseSession = async (sessionId: string) => {
+    if (!window.karaokeAPI) return;
+    const res = await window.karaokeAPI.pauseSession(sessionId);
+    if (res.success) {
+      setCurrentSession(res.data);
+      showNotice(`Sesión "${res.data.name}" en pausa.`);
+    }
+  };
+
+  const handleResumeSession = async (sessionId: string) => {
+    if (!window.karaokeAPI) return;
+    const res = await window.karaokeAPI.resumeSession(sessionId);
+    if (res.success) {
+      setCurrentSession(res.data);
+      showNotice(`Sesión "${res.data.name}" reanudada.`);
     }
   };
 
@@ -169,7 +211,7 @@ export const App: React.FC = () => {
       setCurrentSession(null);
       setQueue([]);
       setSingers([]);
-      setNotification('Sesión finalizada.');
+      showNotice('Sesión finalizada.');
     }
   };
 
@@ -178,7 +220,7 @@ export const App: React.FC = () => {
     const res = await window.karaokeAPI.selectFolder();
     if (res.success && res.data) {
       const folder = res.data;
-      setNotification(`Carpeta "${folder.displayName}" autorizada.`);
+      showNotice(`Carpeta "${folder.displayName}" autorizada. Escaneando...`);
       await refreshFolders();
       await window.karaokeAPI.scanFolder(folder.id);
     }
@@ -188,7 +230,29 @@ export const App: React.FC = () => {
     if (!window.karaokeAPI) return;
     const res = await window.karaokeAPI.scanFolder(folderId);
     if (res.success) {
-      setNotification('Escaneo iniciado en segundo plano...');
+      showNotice('Escaneo iniciado en segundo plano...');
+      await refreshFolders();
+    }
+  };
+
+  const handleCancelScan = async (folderId: string) => {
+    if (!window.karaokeAPI) return;
+    await window.karaokeAPI.cancelScan(folderId);
+    showNotice('Cancelando escaneo...');
+    await refreshFolders();
+  };
+
+  const handleToggleFolder = async (folderId: string, enabled: boolean) => {
+    if (!window.karaokeAPI) return;
+    const res = await window.karaokeAPI.toggleFolder(folderId, enabled);
+    if (res.success) {
+      showNotice(
+        enabled
+          ? `Carpeta "${res.data.displayName}" habilitada en el catálogo.`
+          : `Carpeta "${res.data.displayName}" ocultada temporalmente.`,
+      );
+      await refreshFolders();
+      setCatalogRefreshTrigger((n) => n + 1);
     }
   };
 
@@ -196,16 +260,18 @@ export const App: React.FC = () => {
     if (!window.karaokeAPI) return;
     const res = await window.karaokeAPI.removeFolder(folderId);
     if (res.success) {
-      setNotification('Carpeta desautorizada.');
+      showNotice('Carpeta desautorizada.');
       await refreshFolders();
+      setCatalogRefreshTrigger((n) => n + 1);
     }
   };
 
-  const handleSaveSongMetadata = async (songId: string, title: string, artist: string) => {
+  const handleSaveSongMetadata = async (updates: UpdateSongDTO) => {
     if (!window.karaokeAPI) return;
-    const res = await window.karaokeAPI.updateSong({ songId, title, artist });
+    const res = await window.karaokeAPI.updateSong(updates);
     if (res.success) {
-      setNotification(`Metadatos guardados: "${artist} - ${title}".`);
+      showNotice(`Metadatos actualizados: "${updates.artist} — ${updates.title}".`);
+      setCatalogRefreshTrigger((n) => n + 1);
     }
   };
 
@@ -217,14 +283,37 @@ export const App: React.FC = () => {
   const handleReanalyze = async (mediaAssetId: string) => {
     if (!window.karaokeAPI) return;
     await window.karaokeAPI.reanalyzeAsset(mediaAssetId);
-    setNotification('Activo reanalizado con ffprobe.');
+    showNotice('Archivo reanalizado con ffprobe.');
+    setCatalogRefreshTrigger((n) => n + 1);
     if (detailsSong && detailsSong.asset?.id === mediaAssetId) {
       setDetailsSong(null);
     }
   };
 
+  // Reproducción directa en 1 clic desde el Catálogo
+  const handlePlayNowFromCatalog = async (song: SongDTO) => {
+    if (!window.karaokeAPI) return;
+    const res = await window.karaokeAPI.previewAsset({
+      mediaAssetId: song.mediaAssetId,
+      sessionId: currentSession?.id ?? null,
+    });
+
+    if (res.success) {
+      setPreparedTrack(res.data);
+      await window.karaokeAPI.sendPlayerCommand({ command: 'PLAY' });
+      showNotice(`Reproduciendo ahora: ${res.data.title} — ${res.data.artist}`);
+    } else {
+      showNotice(res.error.message, 'error');
+      setCatalogRefreshTrigger((n) => n + 1);
+    }
+  };
+
   // Cantantes
-  const handleCreateSinger = async (displayName: string, tableOrLocation?: string, notes?: string): Promise<SingerDTO | null> => {
+  const handleCreateSinger = async (
+    displayName: string,
+    tableOrLocation?: string,
+    notes?: string,
+  ): Promise<SingerDTO | null> => {
     if (!window.karaokeAPI || !currentSession) return null;
     const res = await window.karaokeAPI.createSinger({
       sessionId: currentSession.id,
@@ -234,16 +323,21 @@ export const App: React.FC = () => {
     });
     if (res.success) {
       await refreshSingers(currentSession.id);
-      setNotification(`Cantante "${displayName}" registrado.`);
+      showNotice(`Cantante "${displayName}" registrado.`);
       return res.data;
     }
     return null;
   };
 
   // Cola
-  const handleAddToQueue = async (songId: string, singerId: string, keyShift: number, tempoPercent: number) => {
+  const handleAddToQueue = async (
+    songId: string,
+    singerId: string,
+    keyShift: number,
+    tempoPercent: number,
+  ) => {
     if (!window.karaokeAPI || !currentSession) {
-      alert('Debes abrir una sesión antes de añadir canciones a la cola.');
+      showNotice('Abre una sesión primero para añadir canciones a la cola.', 'error');
       return;
     }
 
@@ -256,10 +350,23 @@ export const App: React.FC = () => {
     });
 
     if (res.success) {
-      setNotification(`Canción añadida al turno #${res.data.position}.`);
+      showNotice(`Canción añadida al turno #${res.data.position}.`);
       await refreshQueue(currentSession.id);
     } else {
-      alert(res.error.message);
+      showNotice(res.error.message, 'error');
+    }
+  };
+
+  const handleReorderList = async (orderedIds: string[]) => {
+    if (!window.karaokeAPI || !currentSession) return;
+    const res = await window.karaokeAPI.reorderQueue({
+      sessionId: currentSession.id,
+      orderedItemIds: orderedIds,
+    });
+    if (res.success) {
+      setPreviousOrder(res.data.previousOrder);
+      showNotice('Orden de la cola actualizado.');
+      await refreshQueue(currentSession.id);
     }
   };
 
@@ -273,17 +380,7 @@ export const App: React.FC = () => {
     newOrder.splice(index, 1);
     newOrder.splice(targetIndex, 0, item);
 
-    const orderedIds = newOrder.map((i) => i.id);
-    const res = await window.karaokeAPI.reorderQueue({
-      sessionId: currentSession.id,
-      orderedItemIds: orderedIds,
-    });
-
-    if (res.success) {
-      setPreviousOrder(res.data.previousOrder);
-      setNotification('Orden de la cola actualizado.');
-      await refreshQueue(currentSession.id);
-    }
+    await handleReorderList(newOrder.map((i) => i.id));
   };
 
   const handleUndoReorder = async () => {
@@ -295,7 +392,7 @@ export const App: React.FC = () => {
 
     if (res.success) {
       setPreviousOrder(null);
-      setNotification('Orden anterior restaurado.');
+      showNotice('Orden anterior restaurado.');
       await refreshQueue(currentSession.id);
     }
   };
@@ -309,10 +406,10 @@ export const App: React.FC = () => {
     });
 
     if (res.success) {
-      setNotification(`Turno #${res.data.position} cambiado a ${nextStatus}.`);
+      showNotice(`Turno #${res.data.position} cambiado a ${nextStatus}.`);
       await refreshQueue(currentSession.id);
     } else {
-      alert(res.error.message);
+      showNotice(res.error.message, 'error');
     }
   };
 
@@ -324,12 +421,61 @@ export const App: React.FC = () => {
     });
     if (res.success) {
       setPreparedTrack(res.data);
-      setNotification(`Pista cargada en el reproductor: ${res.data.title}`);
+      showNotice(`Pista cargada y lista: ${res.data.title} (${res.data.singerName})`);
       if (currentSession) {
         await refreshQueue(currentSession.id);
       }
     } else {
-      alert(`Error al preparar pista: ${res.error.message}`);
+      showNotice(`Error al preparar pista: ${res.error.message}`, 'error');
+    }
+  };
+
+  const handlePlayQueueItemNow = async (item: QueueItemDTO) => {
+    if (!window.karaokeAPI) return;
+    const res = await window.karaokeAPI.preparePlayer({
+      sessionId: item.sessionId,
+      queueItemId: item.id,
+    });
+    if (res.success) {
+      setPreparedTrack(res.data);
+      await window.karaokeAPI.sendPlayerCommand({ command: 'PLAY' });
+      showNotice(`En directo: ${res.data.title} — Cantante: ${res.data.singerName}`);
+      if (currentSession) {
+        await refreshQueue(currentSession.id);
+      }
+    } else {
+      showNotice(`Error al reproducir pista: ${res.error.message}`, 'error');
+    }
+  };
+
+  const handleSkipTrack = async () => {
+    if (!window.karaokeAPI) return;
+    if (preparedTrack?.queueItemId && currentSession) {
+      try {
+        await window.karaokeAPI.transitionQueue({
+          queueItemId: preparedTrack.queueItemId,
+          nextStatus: 'SKIPPED',
+          failureReason: 'Saltada por el operador desde el reproductor',
+        });
+      } catch {
+        // Ignorar
+      }
+    }
+
+    const safeQueue = Array.isArray(queue) ? queue : [];
+    const nextItem = safeQueue.find(
+      (i) =>
+        i.id !== preparedTrack?.queueItemId &&
+        !['COMPLETED', 'CANCELLED', 'SKIPPED', 'FAILED'].includes(i.status),
+    );
+
+    if (nextItem) {
+      await handlePlayQueueItemNow(nextItem);
+    } else {
+      await window.karaokeAPI.sendPlayerCommand({ command: 'STOP' });
+      setPreparedTrack(null);
+      showNotice('Pista saltada. No hay más turnos pendientes en la cola.');
+      if (currentSession) await refreshQueue(currentSession.id);
     }
   };
 
@@ -340,17 +486,17 @@ export const App: React.FC = () => {
         await refreshQueue(currentSession.id);
       }
     }
-    setNotification('¡PARADA DE EMERGENCIA ACTIVADA! Vídeo y audio cortados.');
+    showNotice('¡PARADA DE EMERGENCIA ACTIVADA! Vídeo y audio cortados.', 'error');
   };
 
   const handleTogglePublicScreen = async () => {
     if (!window.karaokeAPI) return;
     const res = await window.karaokeAPI.togglePublicWindow();
-    if (res.success) {
+    if (res.success && res.data) {
       setIsPublicScreenOpen(res.data.isOpen);
-      setNotification(
+      showNotice(
         res.data.isOpen
-          ? 'Pantalla pública abierta en el monitor asignado.'
+          ? 'Pantalla pública abierta.'
           : 'Pantalla pública cerrada.',
       );
     }
@@ -361,7 +507,7 @@ export const App: React.FC = () => {
     const res = await window.karaokeAPI.rescuePublicWindow();
     if (res.success) {
       setIsPublicScreenOpen(true);
-      setNotification('Pantalla pública rescatada en el monitor principal del operador.');
+      showNotice('Pantalla pública rescatada en el monitor principal del operador.');
     }
   };
 
@@ -390,12 +536,15 @@ export const App: React.FC = () => {
         onTogglePublicScreen={handleTogglePublicScreen}
         onRescuePublicScreen={handleRescuePublicScreen}
         onOpenSettings={() => setIsSettingsOpen(true)}
+        onOpenWizard={() => setIsWizardOpen(true)}
       />
 
-      <div style={{ padding: '8px 16px', backgroundColor: 'var(--bg-surface)' }}>
+      <div style={{ padding: '8px 16px', backgroundColor: 'var(--bg-surface)', borderBottom: '1px solid var(--border-subtle)' }}>
         <SessionBanner
           currentSession={currentSession}
           onOpenSession={handleOpenSession}
+          onPauseSession={handlePauseSession}
+          onResumeSession={handleResumeSession}
           onCloseSession={handleCloseSession}
         />
       </div>
@@ -407,9 +556,15 @@ export const App: React.FC = () => {
           onOpenFolderManager={() => setIsFolderManagerOpen(true)}
           onEditSong={(song) => setEditingSong(song)}
           onViewDetails={(song) => setDetailsSong(song)}
+          onPlayNow={handlePlayNowFromCatalog}
+          onCancelScan={handleCancelScan}
+          refreshTrigger={catalogRefreshTrigger}
           onAddToQueue={(song) => {
             if (!currentSession) {
-              alert('Debes abrir una sesión antes de asignar canciones a cantantes.');
+              showNotice(
+                'Abre una sesión arriba para encolar cantantes, o pulsa "Play" para reproducir el vídeo directamente.',
+                'error',
+              );
               return;
             }
             setAddingToQueueSong(song);
@@ -419,12 +574,17 @@ export const App: React.FC = () => {
 
         {/* Panel 2: Cola de Actuaciones */}
         <QueuePanel
+          sessionId={currentSession?.id}
           queue={queue}
+          singers={singers}
           hasUndo={!!previousOrder}
           onUndoReorder={handleUndoReorder}
           onMoveItem={handleMoveItem}
+          onReorderList={handleReorderList}
           onTransitionItem={handleTransitionItem}
           onPrepareForPlayback={handlePrepareTrack}
+          onPlayQueueItemNow={handlePlayQueueItemNow}
+          onOpenAddSinger={() => setIsAddSingerOpen(true)}
         />
 
         {/* Panel 3: Reproductor y Control en Vivo */}
@@ -433,28 +593,53 @@ export const App: React.FC = () => {
           onRefreshQueue={async () => {
             if (currentSession) await refreshQueue(currentSession.id);
           }}
-          onNotification={setNotification}
+          onNotification={(msg) => showNotice(msg)}
           preparedTrack={preparedTrack}
           onSetPreparedTrack={setPreparedTrack}
+          onSkipTrack={handleSkipTrack}
         />
       </main>
 
       <footer className="footer-bar">
-        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-          <span style={{ fontSize: '14px', color: 'var(--text-muted)' }}>
-            <strong>Mensajes:</strong> {notification}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          {toast?.type === 'error' ? (
+            <AlertTriangle size={16} color="var(--status-error)" />
+          ) : (
+            <CheckCircle2 size={16} color="var(--status-ready)" />
+          )}
+          <span
+            style={{
+              fontSize: '13px',
+              color: toast?.type === 'error' ? 'var(--status-error)' : 'var(--text-secondary)',
+              fontWeight: toast ? 600 : 400,
+            }}
+          >
+            {notification}
           </span>
         </div>
 
         <button
           className="btn btn-emergency"
           onClick={handleEmergencyStop}
-          title="Parada inmediata de sonido y vídeo en directo"
+          title="Parada inmediata de sonido y vídeo en directo (Esc / F12)"
+          style={{ height: '40px', minHeight: '40px', fontSize: '13px' }}
         >
-          <AlertOctagon size={20} />
+          <AlertOctagon size={18} />
           PARADA DE EMERGENCIA
         </button>
       </footer>
+
+      <SetupWizardModal
+        isOpen={isWizardOpen}
+        onClose={() => setIsWizardOpen(false)}
+        settings={settings}
+        folders={folders}
+        currentSession={currentSession}
+        scanProgress={scanProgress}
+        onSaveSettings={handleSaveSettings}
+        onSelectFolder={handleSelectFolder}
+        onOpenSession={handleOpenSession}
+      />
 
       {settings && (
         <SettingsModal
@@ -472,6 +657,8 @@ export const App: React.FC = () => {
         onClose={() => setIsFolderManagerOpen(false)}
         onSelectFolder={handleSelectFolder}
         onScanFolder={handleScanFolder}
+        onCancelScan={handleCancelScan}
+        onToggleFolder={handleToggleFolder}
         onRemoveFolder={handleRemoveFolder}
       />
 

@@ -1,4 +1,4 @@
-import { eq, and, asc, sql } from 'drizzle-orm';
+import { eq, and, asc, desc, sql } from 'drizzle-orm';
 import { KaraokeDatabase } from '../connection.js';
 import {
   queueItemsTable,
@@ -11,6 +11,7 @@ import {
   QueueItemDTO,
   AddToQueueDTO,
   QueueStatus,
+  QueueEventDTO,
   isValidQueueTransition,
   MediaStatus,
 } from '@karaoke/contracts';
@@ -384,5 +385,26 @@ export class QueueRepository {
     });
 
     return { recoveredCount };
+  }
+
+  public listSessionEvents(sessionId: string, limit = 100): QueueEventDTO[] {
+    const rows = this.db
+      .select()
+      .from(queueEventsTable)
+      .where(eq(queueEventsTable.sessionId, sessionId))
+      .orderBy(desc(queueEventsTable.createdAt))
+      .limit(limit)
+      .all();
+
+    return rows.map((r) => ({
+      id: r.id,
+      sessionId: r.sessionId,
+      queueItemId: r.queueItemId,
+      eventType: r.eventType,
+      previousState: r.previousState,
+      nextState: r.nextState,
+      payloadJson: r.payloadJson,
+      createdAt: r.createdAt,
+    }));
   }
 }

@@ -26,6 +26,10 @@ const api: KaraokeAPI = {
   // Sesión
   getCurrentSession: () => ipcRenderer.invoke(IPC_CHANNELS.SESSION_GET_CURRENT),
   openSession: (name: string) => ipcRenderer.invoke(IPC_CHANNELS.SESSION_OPEN, { name }),
+  pauseSession: (sessionId: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.SESSION_PAUSE, { sessionId }),
+  resumeSession: (sessionId: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.SESSION_RESUME, { sessionId }),
   closeSession: (sessionId: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.SESSION_CLOSE, { sessionId }),
 
@@ -34,6 +38,8 @@ const api: KaraokeAPI = {
   listFolders: () => ipcRenderer.invoke(IPC_CHANNELS.LIBRARY_LIST_FOLDERS),
   removeFolder: (folderId: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.LIBRARY_REMOVE_FOLDER, { folderId }),
+  toggleFolder: (folderId: string, enabled: boolean) =>
+    ipcRenderer.invoke(IPC_CHANNELS.LIBRARY_TOGGLE_FOLDER, { folderId, enabled }),
   scanFolder: (folderId: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.LIBRARY_SCAN_FOLDER, { folderId }),
   cancelScan: (folderId: string) =>
@@ -64,17 +70,21 @@ const api: KaraokeAPI = {
     ipcRenderer.invoke(IPC_CHANNELS.QUEUE_UNDO_REORDER, payload),
   transitionQueue: (payload: QueueTransitionDTO) =>
     ipcRenderer.invoke(IPC_CHANNELS.QUEUE_TRANSITION, payload),
+  listQueueEvents: (sessionId: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.QUEUE_LIST_EVENTS, { sessionId }),
 
   // Reproductor multimedia
   preparePlayer: (payload: { sessionId: string; queueItemId: string }) =>
     ipcRenderer.invoke(IPC_CHANNELS.PLAYER_PREPARE, payload),
+  previewAsset: (payload: { mediaAssetId: string; sessionId?: string | null }) =>
+    ipcRenderer.invoke(IPC_CHANNELS.PLAYER_PREVIEW_ASSET, payload),
   sendPlayerCommand: (command: PlayerCommandDTO) =>
     ipcRenderer.invoke(IPC_CHANNELS.PLAYER_COMMAND, command),
   emergencyStop: () =>
     ipcRenderer.invoke(IPC_CHANNELS.PLAYER_EMERGENCY_STOP),
   getPlayerState: () =>
     ipcRenderer.invoke(IPC_CHANNELS.PLAYER_GET_STATE),
-  reportPlayerEnded: (queueItemId: string) =>
+  reportPlayerEnded: (queueItemId: string | null) =>
     ipcRenderer.invoke(IPC_CHANNELS.PLAYER_REPORT_ENDED, { queueItemId }),
   updatePlayerProgress: (positionMs: number, durationMs?: number) =>
     ipcRenderer.invoke(IPC_CHANNELS.PLAYER_UPDATE_PROGRESS, { positionMs, durationMs }),
