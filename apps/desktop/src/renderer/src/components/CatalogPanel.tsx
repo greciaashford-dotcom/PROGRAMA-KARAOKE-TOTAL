@@ -62,6 +62,7 @@ export const CatalogPanel: React.FC<CatalogPanelProps> = ({
       const res = await window.karaokeAPI.listAssets({
         page,
         pageSize,
+        category: 'KARAOKE',
         search: search.trim() || undefined,
         folderId: selectedFolderId || undefined,
         status: (selectedStatus as MediaStatus) || undefined,
@@ -245,11 +246,13 @@ export const CatalogPanel: React.FC<CatalogPanelProps> = ({
             title="Filtrar por carpeta"
           >
             <option value="">📁 Todas las carpetas</option>
-            {folders.map((f) => (
-              <option key={f.id} value={f.id}>
-                {f.displayName}
-              </option>
-            ))}
+            {folders
+              .filter((f) => f.category === 'KARAOKE')
+              .map((f) => (
+                <option key={f.id} value={f.id}>
+                  {f.displayName}
+                </option>
+              ))}
           </select>
 
           <select

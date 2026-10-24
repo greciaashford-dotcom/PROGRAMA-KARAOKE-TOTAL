@@ -35,6 +35,7 @@ export const App: React.FC = () => {
   const [preparedTrack, setPreparedTrack] = useState<PlayerPrepareResult | null>(null);
   const [isPublicScreenOpen, setIsPublicScreenOpen] = useState<boolean>(false);
   const [catalogRefreshTrigger, setCatalogRefreshTrigger] = useState<number>(0);
+  const [emergencyStopSignal, setEmergencyStopSignal] = useState<number>(0);
 
   // Modales
   const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
@@ -480,6 +481,7 @@ export const App: React.FC = () => {
   };
 
   const handleEmergencyStop = async () => {
+    setEmergencyStopSignal((s) => s + 1);
     if (window.karaokeAPI) {
       await window.karaokeAPI.emergencyStop();
       if (currentSession) {
@@ -593,23 +595,29 @@ export const App: React.FC = () => {
           onRefreshQueue={async () => {
             if (currentSession) await refreshQueue(currentSession.id);
           }}
-          onNotification={(msg) => showNotice(msg)}
+          onNotification={(msg, type) => showNotice(msg, type)}
           preparedTrack={preparedTrack}
           onSetPreparedTrack={setPreparedTrack}
           onSkipTrack={handleSkipTrack}
+          ambientVolume={settings?.ambientVolume ?? 35}
+          onSaveAmbientVolume={(vol) => {
+            window.karaokeAPI?.updateSettings({ ambientVolume: vol });
+          }}
+          catalogRefreshTrigger={catalogRefreshTrigger}
+          emergencyStopSignal={emergencyStopSignal}
         />
       </main>
 
       <footer className="footer-bar">
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           {toast?.type === 'error' ? (
-            <AlertTriangle size={16} color="var(--status-error)" />
+            <AlertTriangle size={15} color="var(--status-error)" />
           ) : (
-            <CheckCircle2 size={16} color="var(--status-ready)" />
+            <CheckCircle2 size={15} color="var(--status-ready)" />
           )}
           <span
             style={{
-              fontSize: '13px',
+              fontSize: '12px',
               color: toast?.type === 'error' ? 'var(--status-error)' : 'var(--text-secondary)',
               fontWeight: toast ? 600 : 400,
             }}
@@ -622,10 +630,17 @@ export const App: React.FC = () => {
           className="btn btn-emergency"
           onClick={handleEmergencyStop}
           title="Parada inmediata de sonido y vídeo en directo (Esc / F12)"
-          style={{ height: '40px', minHeight: '40px', fontSize: '13px' }}
+          style={{
+            height: '28px',
+            minHeight: '28px',
+            padding: '0 10px',
+            fontSize: '11px',
+            fontWeight: 700,
+            gap: '5px',
+          }}
         >
-          <AlertOctagon size={18} />
-          PARADA DE EMERGENCIA
+          <AlertOctagon size={14} />
+          Parada de Emergencia (Esc)
         </button>
       </footer>
 

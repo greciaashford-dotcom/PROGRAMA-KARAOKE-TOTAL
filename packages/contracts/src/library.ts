@@ -72,6 +72,7 @@ export type SongDTO = z.infer<typeof SongDTOSchema>;
 export const CatalogQuerySchema = z.object({
   search: z.string().optional(),
   folderId: z.string().uuid().optional(),
+  category: FolderCategorySchema.optional(),
   status: MediaStatusSchema.optional(),
   extension: z.string().optional(),
   language: z.string().optional(),

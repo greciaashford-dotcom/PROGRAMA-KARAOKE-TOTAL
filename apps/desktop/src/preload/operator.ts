@@ -23,8 +23,11 @@ const IPC_CHANNELS: typeof IpcChannelsType = {
   SETTINGS_UPDATE: 'settings:update',
 
   LIBRARY_SELECT_FOLDER: 'library:selectFolder',
+  LIBRARY_SELECT_AMBIENT_FOLDER: 'library:selectAmbientFolder',
+  LIBRARY_SELECT_AMBIENT_FILES: 'library:selectAmbientFiles',
   LIBRARY_LIST_FOLDERS: 'library:listFolders',
   LIBRARY_REMOVE_FOLDER: 'library:removeFolder',
+  LIBRARY_REMOVE_ASSET: 'library:removeAsset',
   LIBRARY_TOGGLE_FOLDER: 'library:toggleFolder',
   LIBRARY_SCAN_FOLDER: 'library:scanFolder',
   LIBRARY_CANCEL_SCAN: 'library:cancelScan',
@@ -86,9 +89,13 @@ const api: KaraokeAPI = {
 
   // Biblioteca y Carpetas
   selectFolder: () => ipcRenderer.invoke(IPC_CHANNELS.LIBRARY_SELECT_FOLDER),
+  selectAmbientFolder: () => ipcRenderer.invoke(IPC_CHANNELS.LIBRARY_SELECT_AMBIENT_FOLDER),
+  selectAmbientFiles: () => ipcRenderer.invoke(IPC_CHANNELS.LIBRARY_SELECT_AMBIENT_FILES),
   listFolders: () => ipcRenderer.invoke(IPC_CHANNELS.LIBRARY_LIST_FOLDERS),
   removeFolder: (folderId: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.LIBRARY_REMOVE_FOLDER, { folderId }),
+  removeAsset: (mediaAssetId: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.LIBRARY_REMOVE_ASSET, { mediaAssetId }),
   toggleFolder: (folderId: string, enabled: boolean) =>
     ipcRenderer.invoke(IPC_CHANNELS.LIBRARY_TOGGLE_FOLDER, { folderId, enabled }),
   scanFolder: (folderId: string) =>

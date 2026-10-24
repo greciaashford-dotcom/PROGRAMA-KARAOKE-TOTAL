@@ -5,8 +5,11 @@ export const IPC_CHANNELS = {
 
   // Biblioteca y Carpetas
   LIBRARY_SELECT_FOLDER: 'library:selectFolder',
+  LIBRARY_SELECT_AMBIENT_FOLDER: 'library:selectAmbientFolder',
+  LIBRARY_SELECT_AMBIENT_FILES: 'library:selectAmbientFiles',
   LIBRARY_LIST_FOLDERS: 'library:listFolders',
   LIBRARY_REMOVE_FOLDER: 'library:removeFolder',
+  LIBRARY_REMOVE_ASSET: 'library:removeAsset',
   LIBRARY_TOGGLE_FOLDER: 'library:toggleFolder',
   LIBRARY_SCAN_FOLDER: 'library:scanFolder',
   LIBRARY_CANCEL_SCAN: 'library:cancelScan',

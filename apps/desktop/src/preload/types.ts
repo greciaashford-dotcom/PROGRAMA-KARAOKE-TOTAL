@@ -54,8 +54,11 @@ export interface KaraokeAPI {
 
   // Biblioteca y Carpetas
   selectFolder: () => Promise<Result<MediaFolderDTO | null>>;
+  selectAmbientFolder: () => Promise<Result<MediaFolderDTO | null>>;
+  selectAmbientFiles: () => Promise<Result<{ addedCount: number; folderId?: string }>>;
   listFolders: () => Promise<Result<MediaFolderDTO[]>>;
   removeFolder: (folderId: string) => Promise<Result<void>>;
+  removeAsset: (mediaAssetId: string) => Promise<Result<void>>;
   toggleFolder: (folderId: string, enabled: boolean) => Promise<Result<MediaFolderDTO>>;
   scanFolder: (folderId: string) => Promise<Result<{ scanId: string }>>;
   cancelScan: (folderId: string) => Promise<Result<void>>;

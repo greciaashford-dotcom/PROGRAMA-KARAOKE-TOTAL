@@ -1,4 +1,5 @@
-import { ipcMain, dialog, shell, BrowserWindow } from 'electron';
+import { ipcMain, dialog, shell, BrowserWindow, app } from 'electron';
+import * as fs from 'node:fs';
 import * as path from 'node:path';
 import {
   IPC_CHANNELS,
@@ -65,7 +66,13 @@ export function registerLibraryHandlers(
         if (cancelled) {
           mediaRepo.updateFolderScanStatus(folderId, 'CANCELLED', startTime, endTime);
         } else {
-          const batchInputs = items.map((i) => ({
+          // Si la carpeta es de categoría AMBIENT, filtrar estrictamente solo archivos .mp3
+          const filteredItems =
+            folder.category === 'AMBIENT'
+              ? items.filter((i) => i.extension.toLowerCase() === '.mp3')
+              : items;
+
+          const batchInputs = filteredItems.map((i) => ({
             relativePath: i.relativePath,
             filename: i.filename,
             extension: i.extension,
@@ -87,7 +94,7 @@ export function registerLibraryHandlers(
 
           mediaRepo.syncScannedBatch(folderId, batchInputs);
 
-          const seenPaths = new Set(items.map((i) => i.relativePath));
+          const seenPaths = new Set(filteredItems.map((i) => i.relativePath));
           mediaRepo.reconcileMissingAssets(folderId, seenPaths);
 
           mediaRepo.updateFolderScanStatus(folderId, 'COMPLETED', startTime, endTime);
@@ -146,6 +153,123 @@ export function registerLibraryHandlers(
     } catch (error) {
       console.error('Error seleccionando carpeta:', error);
       return err(ErrorCode.SCANNER_ERROR, 'No se pudo autorizar la carpeta seleccionada.');
+    }
+  });
+
+  // 1b. Selector de carpeta de música de ambiente (exclusivamente MP3)
+  ipcMain.handle(IPC_CHANNELS.LIBRARY_SELECT_AMBIENT_FOLDER, async () => {
+    try {
+      const win = getWindow();
+      const dialogResult = win
+        ? await dialog.showOpenDialog(win, {
+            title: 'Seleccionar Carpeta de Música de Ambiente (Solo MP3)',
+            properties: ['openDirectory'],
+          })
+        : await dialog.showOpenDialog({
+            title: 'Seleccionar Carpeta de Música de Ambiente (Solo MP3)',
+            properties: ['openDirectory'],
+          });
+
+      if (dialogResult.canceled || dialogResult.filePaths.length === 0) {
+        return ok(null);
+      }
+
+      const selectedPath = dialogResult.filePaths[0];
+      if (!selectedPath) return ok(null);
+
+      const existing = mediaRepo
+        .listFolders()
+        .find((f) => path.resolve(mediaRepo.getFolderById(f.id)?.absolutePath || '') === path.resolve(selectedPath));
+
+      if (existing) {
+        triggerFolderScan(existing.id);
+        return ok(existing);
+      }
+
+      const displayName = `${path.basename(selectedPath) || selectedPath} (Ambiente MP3)`;
+      const folder = mediaRepo.addFolder(selectedPath, displayName, 'AMBIENT');
+
+      watcher.watchFolder(folder.id, selectedPath, (event) => {
+        if (!activeScans.has(event.folderId)) {
+          triggerFolderScan(event.folderId);
+        }
+      });
+
+      triggerFolderScan(folder.id);
+      return ok(folder);
+    } catch (error) {
+      console.error('Error seleccionando carpeta de ambiente:', error);
+      return err(ErrorCode.SCANNER_ERROR, 'No se pudo cargar la carpeta de música de ambiente.');
+    }
+  });
+
+  // 1c. Selector de archivos individuales MP3 para música de ambiente
+  ipcMain.handle(IPC_CHANNELS.LIBRARY_SELECT_AMBIENT_FILES, async () => {
+    try {
+      const win = getWindow();
+      const dialogOptions: Electron.OpenDialogOptions = {
+        title: 'Seleccionar Archivos MP3 de Música de Ambiente',
+        properties: ['openFile', 'multiSelections'],
+        filters: [{ name: 'Archivos de Audio MP3 (*.mp3)', extensions: ['mp3'] }],
+      };
+
+      const dialogResult = win
+        ? await dialog.showOpenDialog(win, dialogOptions)
+        : await dialog.showOpenDialog(dialogOptions);
+
+      if (dialogResult.canceled || dialogResult.filePaths.length === 0) {
+        return ok({ addedCount: 0 });
+      }
+
+      const mp3Files = dialogResult.filePaths.filter(
+        (fp) => path.extname(fp).toLowerCase() === '.mp3' && fs.existsSync(fp),
+      );
+      if (mp3Files.length === 0) {
+        return err(ErrorCode.VALIDATION_ERROR, 'Solo se permiten archivos en formato .mp3 para música de ambiente.');
+      }
+
+      const ambientDir = path.join(app.getPath('userData'), 'ambient-mp3');
+      if (!fs.existsSync(ambientDir)) {
+        fs.mkdirSync(ambientDir, { recursive: true });
+      }
+
+      let ambientFolder = mediaRepo
+        .listFolders()
+        .find((f) => path.resolve(mediaRepo.getFolderById(f.id)?.absolutePath || '') === path.resolve(ambientDir));
+
+      if (!ambientFolder) {
+        ambientFolder = mediaRepo.addFolder(ambientDir, 'Archivos MP3 de Ambiente', 'AMBIENT');
+      } else if (!ambientFolder.enabled) {
+        mediaRepo.toggleFolder(ambientFolder.id, true);
+      }
+
+      for (const srcFile of mp3Files) {
+        const destFile = path.join(ambientDir, path.basename(srcFile));
+        if (path.resolve(srcFile) !== path.resolve(destFile)) {
+          fs.copyFileSync(srcFile, destFile);
+        }
+      }
+
+      triggerFolderScan(ambientFolder.id);
+      return ok({ addedCount: mp3Files.length, folderId: ambientFolder.id });
+    } catch (error) {
+      console.error('Error importando archivos MP3 de ambiente:', error);
+      return err(ErrorCode.SCANNER_ERROR, 'No se pudieron importar los archivos MP3 seleccionados.');
+    }
+  });
+
+  // 1d. Quitar un archivo individual (activo multimedia)
+  ipcMain.handle(IPC_CHANNELS.LIBRARY_REMOVE_ASSET, async (_event, rawPayload: unknown) => {
+    try {
+      const parseResult = MediaAssetIdSchema.safeParse(rawPayload);
+      if (!parseResult.success) {
+        return err(ErrorCode.VALIDATION_ERROR, 'ID de activo inválido.');
+      }
+      mediaRepo.removeAsset(parseResult.data.mediaAssetId);
+      return ok(undefined);
+    } catch (error) {
+      console.error('Error eliminando activo:', error);
+      return err(ErrorCode.DATABASE_ERROR, 'No se pudo quitar el archivo.');
     }
   });
 

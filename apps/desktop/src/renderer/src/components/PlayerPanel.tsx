@@ -3,7 +3,6 @@ import {
   Play,
   Pause,
   Square,
-  AlertOctagon,
   Volume2,
   VolumeX,
   RotateCcw,
@@ -14,6 +13,7 @@ import {
   User,
   Film,
   Headphones,
+  Sparkles,
 } from 'lucide-react';
 import {
   QueueItemDTO,
@@ -21,14 +21,20 @@ import {
   PlaybackStatus,
 } from '@karaoke/contracts';
 import { PlayerPrepareResult } from '../../../preload/types.js';
+import { playApplause, stopApplause } from '../utils/applause.js';
+import { AmbientMusicPanel } from './AmbientMusicPanel.js';
 
 interface PlayerPanelProps {
   queue: QueueItemDTO[];
   onRefreshQueue: () => Promise<void>;
-  onNotification: (msg: string) => void;
+  onNotification: (msg: string, type?: 'info' | 'error') => void;
   preparedTrack: PlayerPrepareResult | null;
   onSetPreparedTrack: (track: PlayerPrepareResult | null) => void;
   onSkipTrack?: () => Promise<void>;
+  ambientVolume?: number;
+  onSaveAmbientVolume?: (vol: number) => void;
+  catalogRefreshTrigger?: number;
+  emergencyStopSignal?: number;
 }
 
 const AUDIO_ONLY_EXTENSIONS = new Set([
@@ -49,6 +55,10 @@ export const PlayerPanel: React.FC<PlayerPanelProps> = ({
   preparedTrack,
   onSetPreparedTrack,
   onSkipTrack,
+  ambientVolume = 35,
+  onSaveAmbientVolume,
+  catalogRefreshTrigger = 0,
+  emergencyStopSignal = 0,
 }) => {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [playbackState, setPlaybackState] = useState<PlaybackStatus>('IDLE');
@@ -58,6 +68,7 @@ export const PlayerPanel: React.FC<PlayerPanelProps> = ({
   const [volume, setVolume] = useState<number>(100);
   const [isMuted, setIsMuted] = useState<boolean>(false);
   const [isSeeking, setIsSeeking] = useState<boolean>(false);
+  const [isApplauseActive, setIsApplauseActive] = useState<boolean>(false);
   const lastReportedTimeRef = useRef<number>(0);
 
   const updatePlaybackStateLocal = (nextState: PlaybackStatus) => {
@@ -134,12 +145,23 @@ export const PlayerPanel: React.FC<PlayerPanelProps> = ({
 
   // Asegurar que si el estado pasa a PLAYING cuando ya hay pista, el elemento <video> reproduzca
   useEffect(() => {
+    if (playbackState === 'PLAYING') {
+      stopApplause();
+      setIsApplauseActive(false);
+    }
     if (preparedTrack && playbackState === 'PLAYING' && videoRef.current && videoRef.current.paused) {
       videoRef.current.play().catch(() => {
         // Se reintentará en onCanPlay cuando termine de cargar el buffer inicial
       });
     }
   }, [preparedTrack, playbackState]);
+
+  useEffect(() => {
+    if (emergencyStopSignal > 0) {
+      stopApplause();
+      setIsApplauseActive(false);
+    }
+  }, [emergencyStopSignal]);
 
   // Manejo de Comandos
   const handleTogglePlay = useCallback(async () => {
@@ -217,6 +239,8 @@ export const PlayerPanel: React.FC<PlayerPanelProps> = ({
 
   const handleEmergencyStop = useCallback(async () => {
     if (!window.karaokeAPI) return;
+    stopApplause();
+    setIsApplauseActive(false);
     if (videoRef.current) {
       videoRef.current.pause();
       videoRef.current.currentTime = 0;
@@ -224,7 +248,7 @@ export const PlayerPanel: React.FC<PlayerPanelProps> = ({
     setCurrentTimeMs(0);
     updatePlaybackStateLocal('STOPPED');
     await window.karaokeAPI.emergencyStop();
-    onNotification('¡PARADA DE EMERGENCIA ACTIVADA! Vídeo y audio cortados.');
+    onNotification('¡PARADA DE EMERGENCIA ACTIVADA! Vídeo y audio cortados.', 'error');
     await onRefreshQueue();
   }, [onNotification, onRefreshQueue]);
 
@@ -301,16 +325,26 @@ export const PlayerPanel: React.FC<PlayerPanelProps> = ({
   /**
    * INNEGOCIABLE: La finalización solo se procesa mediante el evento nativo 'ended' del elemento <video>.
    * Queda terminantemente prohibido simular eventos con temporizadores artificiales.
+   * Al finalizar una reproducción de karaoke, suena automáticamente un aplauso de 6 segundos.
    */
   const handleNativeEnded = async () => {
     if (!preparedTrack || !window.karaokeAPI) return;
-    console.log(`[Reproductor] Evento nativo 'ended' detectado para pista: ${preparedTrack.title}`);
+    const finishedTitle = preparedTrack.title;
+    const finishedSinger = preparedTrack.singerName;
+    console.log(`[Reproductor] Evento nativo 'ended' detectado para pista: ${finishedTitle}`);
 
     await window.karaokeAPI.reportPlayerEnded(preparedTrack.queueItemId);
-    onNotification(`Actuación finalizada: ${preparedTrack.title} (${preparedTrack.singerName})`);
     onSetPreparedTrack(null);
     setCurrentTimeMs(0);
     updatePlaybackStateLocal('ENDED');
+
+    // Reproducir sonido de aplausos automáticamente durante 6 segundos
+    setIsApplauseActive(true);
+    playApplause(6000, isMuted ? 0 : Math.max(0.35, volume / 100), () => {
+      setIsApplauseActive(false);
+    });
+
+    onNotification(`👏 ¡Actuación finalizada! Aplausos (6s) para ${finishedSinger} — ${finishedTitle}`);
     await onRefreshQueue();
   };
 
@@ -402,8 +436,8 @@ export const PlayerPanel: React.FC<PlayerPanelProps> = ({
           style={{
             width: '100%',
             aspectRatio: '16 / 9',
-            minHeight: '190px',
-            maxHeight: '240px',
+            minHeight: '165px',
+            maxHeight: '205px',
             backgroundColor: '#000000',
             borderRadius: '8px',
             overflow: 'hidden',
@@ -415,6 +449,31 @@ export const PlayerPanel: React.FC<PlayerPanelProps> = ({
             boxShadow: '0 8px 20px rgba(0, 0, 0, 0.45)',
           }}
         >
+          {isApplauseActive && !preparedTrack && (
+            <div
+              style={{
+                position: 'absolute',
+                inset: 0,
+                zIndex: 10,
+                background: 'radial-gradient(circle, rgba(245,158,11,0.22) 0%, rgba(10,10,14,0.95) 100%)',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '8px',
+                textAlign: 'center',
+                padding: '16px',
+              }}
+            >
+              <Sparkles size={34} color="var(--accent-warm)" />
+              <div style={{ fontSize: '16px', fontWeight: 800, color: 'var(--accent-warm)' }}>
+                👏 ¡APLAUSOS EN SALA! (6s)
+              </div>
+              <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+                Celebrando el final de la interpretación...
+              </div>
+            </div>
+          )}
           {preparedTrack ? (
             <>
               <video
@@ -754,24 +813,16 @@ export const PlayerPanel: React.FC<PlayerPanelProps> = ({
           />
         </div>
 
-        {/* Botón de Parada de Emergencia Permanente */}
-        <button
-          className="btn btn-emergency"
-          onClick={handleEmergencyStop}
-          title="Parada inmediata de sonido y vídeo (Esc / F12)"
-          style={{
-            width: '100%',
-            height: '40px',
-            minHeight: '40px',
-            fontSize: '13px',
-            fontWeight: 800,
-            gap: '8px',
-            marginTop: 'auto',
-          }}
-        >
-          <AlertOctagon size={17} />
-          PARADA DE EMERGENCIA (ESC)
-        </button>
+        {/* Apartado de Música de Ambiente (Solo MP3) en la pantalla principal */}
+        <AmbientMusicPanel
+          isKaraokeActive={playbackState === 'PLAYING'}
+          isApplauseActive={isApplauseActive}
+          initialVolume={ambientVolume}
+          refreshTrigger={catalogRefreshTrigger}
+          onVolumeSave={onSaveAmbientVolume}
+          onNotification={onNotification}
+          emergencyStopSignal={emergencyStopSignal}
+        />
       </div>
     </section>
   );

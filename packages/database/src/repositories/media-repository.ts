@@ -165,6 +165,13 @@ export class MediaRepository {
       .run();
   }
 
+  public removeAsset(assetId: string): boolean {
+    const existing = this.getAssetById(assetId);
+    if (!existing) return false;
+    this.db.delete(mediaAssetsTable).where(eq(mediaAssetsTable.id, assetId)).run();
+    return true;
+  }
+
   /**
    * Reconcilia activos que pudieron marcarse como INCOMPATIBLE o CORRUPT por portadas incrustadas (mjpeg/png)
    * o fallos de ejecución de ffprobe en versiones previas.
@@ -371,6 +378,10 @@ export class MediaRepository {
       conditions.push(eq(mediaAssetsTable.folderId, query.folderId));
     } else {
       conditions.push(eq(mediaFoldersTable.enabled, true));
+    }
+
+    if (query.category) {
+      conditions.push(eq(mediaFoldersTable.category, query.category));
     }
 
     if (query.status) {
