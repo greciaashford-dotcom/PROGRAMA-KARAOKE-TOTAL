@@ -13,8 +13,8 @@ export function createOperatorWindow(): BrowserWindow {
     minWidth: 1080,
     minHeight: 720,
     title: 'Karaoke Total — Consola del Operador',
-    backgroundColor: '#121214',
-    show: false,
+    backgroundColor: '#09090b',
+    show: true,
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,

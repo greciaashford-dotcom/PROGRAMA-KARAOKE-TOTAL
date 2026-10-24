@@ -23,10 +23,15 @@ export function createDatabaseConnection(options: DatabaseConnectionOptions): {
     }
   }
 
+  const electronNativeBinding = path.join(__dirname, 'better_sqlite3.node');
+  const useElectronNativeBinding =
+    Boolean(process.versions?.electron) && fs.existsSync(electronNativeBinding);
+
   const sqlite = new Database(options.filename, {
     readonly: options.readonly ?? false,
     fileMustExist: false,
     timeout: 5000,
+    ...(useElectronNativeBinding ? { nativeBinding: electronNativeBinding } : {}),
   });
 
   // Optimizaciones y restricciones innegociables para SQLite
