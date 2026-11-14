@@ -3,8 +3,6 @@ import {
   Play,
   Pause,
   Square,
-  Volume2,
-  VolumeX,
   RotateCcw,
   RotateCw,
   SkipBack,
@@ -12,8 +10,8 @@ import {
   Music2,
   User,
   Film,
-  Headphones,
   Sparkles,
+  Music,
 } from 'lucide-react';
 import {
   QueueItemDTO,
@@ -22,6 +20,7 @@ import {
 } from '@karaoke/contracts';
 import { PlayerPrepareResult } from '../../../preload/types.js';
 import { playApplause, stopApplause } from '../utils/applause.js';
+import { audioMixerEngine } from '../utils/audio-mixer-engine.js';
 import { AmbientMusicPanel } from './AmbientMusicPanel.js';
 
 interface PlayerPanelProps {
@@ -31,8 +30,17 @@ interface PlayerPanelProps {
   preparedTrack: PlayerPrepareResult | null;
   onSetPreparedTrack: (track: PlayerPrepareResult | null) => void;
   onSkipTrack?: () => Promise<void>;
-  ambientVolume?: number;
-  onSaveAmbientVolume?: (vol: number) => void;
+  karaokeVolume: number;
+  ambientVolume: number;
+  masterVolume: number;
+  karaokeMuted: boolean;
+  ambientMuted: boolean;
+  masterMuted: boolean;
+  crossfadeEnabled: boolean;
+  crossfadeDurationSec: number;
+  onChangeAmbientVolume: (vol: number) => void;
+  onToggleAmbientMute: () => void;
+  onCrossfadeStateChange?: (isCrossfading: boolean) => void;
   catalogRefreshTrigger?: number;
   emergencyStopSignal?: number;
 }
@@ -55,18 +63,27 @@ export const PlayerPanel: React.FC<PlayerPanelProps> = ({
   preparedTrack,
   onSetPreparedTrack,
   onSkipTrack,
-  ambientVolume = 35,
-  onSaveAmbientVolume,
+  karaokeVolume,
+  ambientVolume,
+  masterVolume,
+  karaokeMuted,
+  ambientMuted,
+  masterMuted,
+  crossfadeEnabled,
+  crossfadeDurationSec,
+  onChangeAmbientVolume,
+  onToggleAmbientMute,
+  onCrossfadeStateChange,
   catalogRefreshTrigger = 0,
   emergencyStopSignal = 0,
 }) => {
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const fadeInTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [karaokeFadeMultiplier, setKaraokeFadeMultiplier] = useState<number>(1);
   const [playbackState, setPlaybackState] = useState<PlaybackStatus>('IDLE');
   const playbackStateRef = useRef<PlaybackStatus>('IDLE');
   const [currentTimeMs, setCurrentTimeMs] = useState<number>(0);
   const [durationMs, setDurationMs] = useState<number>(0);
-  const [volume, setVolume] = useState<number>(100);
-  const [isMuted, setIsMuted] = useState<boolean>(false);
   const [isSeeking, setIsSeeking] = useState<boolean>(false);
   const [isApplauseActive, setIsApplauseActive] = useState<boolean>(false);
   const lastReportedTimeRef = useRef<number>(0);
@@ -76,6 +93,20 @@ export const PlayerPanel: React.FC<PlayerPanelProps> = ({
     setPlaybackState(nextState);
   };
 
+  const clearFadeInTimer = useCallback(() => {
+    if (fadeInTimerRef.current) {
+      clearInterval(fadeInTimerRef.current);
+      fadeInTimerRef.current = null;
+    }
+  }, []);
+
+  // Calcular ganancia efectiva real del canal Karaoke combinada con Master, Mute y Crossfade
+  const getEffectiveKaraokeScalar = useCallback(() => {
+    if (karaokeMuted || masterMuted) return 0;
+    const base = (karaokeVolume / 100) * (masterVolume / 100);
+    return Math.max(0, Math.min(1, base * karaokeFadeMultiplier));
+  }, [karaokeMuted, masterMuted, karaokeVolume, masterVolume, karaokeFadeMultiplier]);
+
   // Sincronizar estado inicial y suscribirse a eventos globales del reproductor
   useEffect(() => {
     const fetchInitialState = async () => {
@@ -83,7 +114,6 @@ export const PlayerPanel: React.FC<PlayerPanelProps> = ({
       const res = await window.karaokeAPI.getPlayerState();
       if (res.success && res.data) {
         updatePlaybackStateLocal(res.data.state);
-        setVolume(res.data.volume);
         if (res.data.durationMs) {
           setDurationMs(res.data.durationMs);
         }
@@ -93,7 +123,6 @@ export const PlayerPanel: React.FC<PlayerPanelProps> = ({
 
     const unsubscribe = window.karaokeAPI.onPlayerStateChanged((snapshot: PlaybackSnapshotDTO) => {
       updatePlaybackStateLocal(snapshot.state);
-      setVolume(snapshot.volume);
       if (snapshot.durationMs) {
         setDurationMs(snapshot.durationMs);
       }
@@ -115,10 +144,11 @@ export const PlayerPanel: React.FC<PlayerPanelProps> = ({
 
     return () => {
       unsubscribe();
+      clearFadeInTimer();
     };
-  }, []);
+  }, [clearFadeInTimer]);
 
-  // Cuando cambia la pista cargada, reiniciar posición sin sobrescribir un estado PLAYING recién emitido
+  // Cuando cambia la pista cargada, reiniciar posición y registrar en el analizador Web Audio
   useEffect(() => {
     if (preparedTrack) {
       setDurationMs(preparedTrack.durationMs || 0);
@@ -127,6 +157,7 @@ export const PlayerPanel: React.FC<PlayerPanelProps> = ({
         updatePlaybackStateLocal(preparedTrack.snapshot?.state || 'READY');
       }
       if (videoRef.current) {
+        audioMixerEngine.registerKaraokeElement(videoRef.current);
         videoRef.current.currentTime = 0;
         videoRef.current.load();
       }
@@ -136,32 +167,58 @@ export const PlayerPanel: React.FC<PlayerPanelProps> = ({
     }
   }, [preparedTrack?.mediaUrl, preparedTrack?.queueItemId]);
 
-  // Sincronizar volumen y silencio de cabina de forma independiente (sin reiniciar vídeo)
+  // Aplicar volumen efectivo al elemento <video> y sincronizar con la Pantalla Pública
   useEffect(() => {
+    const effectiveScalar = getEffectiveKaraokeScalar();
     if (videoRef.current) {
-      videoRef.current.volume = isMuted ? 0 : volume / 100;
+      videoRef.current.volume = effectiveScalar;
     }
-  }, [isMuted, volume]);
+    const publicVol = Math.round(effectiveScalar * 100);
+    window.karaokeAPI?.sendPlayerCommand({ command: 'SET_VOLUME', volume: publicVol }).catch(() => {});
+  }, [getEffectiveKaraokeScalar]);
 
-  // Asegurar que si el estado pasa a PLAYING cuando ya hay pista, el elemento <video> reproduzca
+  // Al pasar a PLAYING: detener aplausos, activar rampa de entrada si Crossfade está ON y reproducir <video>
   useEffect(() => {
     if (playbackState === 'PLAYING') {
       stopApplause();
       setIsApplauseActive(false);
+
+      clearFadeInTimer();
+      if (crossfadeEnabled) {
+        const durationMs = Math.max(500, crossfadeDurationSec * 1000);
+        const steps = Math.max(10, Math.floor(durationMs / 50));
+        let step = 0;
+        setKaraokeFadeMultiplier(0.35);
+        fadeInTimerRef.current = setInterval(() => {
+          step++;
+          const nextMult = Math.min(1, 0.35 + 0.65 * (step / steps));
+          setKaraokeFadeMultiplier(nextMult);
+          if (step >= steps) {
+            clearFadeInTimer();
+          }
+        }, 50);
+      } else {
+        setKaraokeFadeMultiplier(1);
+      }
+    } else {
+      clearFadeInTimer();
+      setKaraokeFadeMultiplier(1);
     }
+
     if (preparedTrack && playbackState === 'PLAYING' && videoRef.current && videoRef.current.paused) {
       videoRef.current.play().catch(() => {
         // Se reintentará en onCanPlay cuando termine de cargar el buffer inicial
       });
     }
-  }, [preparedTrack, playbackState]);
+  }, [preparedTrack, playbackState, crossfadeEnabled, crossfadeDurationSec, clearFadeInTimer]);
 
   useEffect(() => {
     if (emergencyStopSignal > 0) {
+      clearFadeInTimer();
       stopApplause();
       setIsApplauseActive(false);
     }
-  }, [emergencyStopSignal]);
+  }, [emergencyStopSignal, clearFadeInTimer]);
 
   // Manejo de Comandos
   const handleTogglePlay = useCallback(async () => {
@@ -184,7 +241,7 @@ export const PlayerPanel: React.FC<PlayerPanelProps> = ({
           onNotification(`En directo: ${prepRes.data.title}`);
           await onRefreshQueue();
         } else {
-          onNotification(prepRes.error.message);
+          onNotification(prepRes.error.message, 'error');
         }
       } else {
         onNotification('Selecciona una canción del Catálogo (Play) o añade una a la Cola.');
@@ -203,7 +260,7 @@ export const PlayerPanel: React.FC<PlayerPanelProps> = ({
       if (videoRef.current) {
         videoRef.current.play().catch((err) => {
           console.error('[Reproductor] Error al iniciar video:', err);
-          onNotification('Error al iniciar vídeo. Verifica el archivo multimedia.');
+          onNotification('Error al iniciar vídeo. Verifica el archivo multimedia.', 'error');
         });
       }
       onNotification(`En directo: ${preparedTrack.title}`);
@@ -226,6 +283,7 @@ export const PlayerPanel: React.FC<PlayerPanelProps> = ({
 
   const handleStop = useCallback(async () => {
     if (!window.karaokeAPI) return;
+    clearFadeInTimer();
     if (videoRef.current) {
       videoRef.current.pause();
       videoRef.current.currentTime = 0;
@@ -235,10 +293,11 @@ export const PlayerPanel: React.FC<PlayerPanelProps> = ({
     await window.karaokeAPI.sendPlayerCommand({ command: 'STOP' });
     onNotification('Reproducción detenida.');
     await onRefreshQueue();
-  }, [onNotification, onRefreshQueue]);
+  }, [onNotification, onRefreshQueue, clearFadeInTimer]);
 
   const handleEmergencyStop = useCallback(async () => {
     if (!window.karaokeAPI) return;
+    clearFadeInTimer();
     stopApplause();
     setIsApplauseActive(false);
     if (videoRef.current) {
@@ -250,7 +309,7 @@ export const PlayerPanel: React.FC<PlayerPanelProps> = ({
     await window.karaokeAPI.emergencyStop();
     onNotification('¡PARADA DE EMERGENCIA ACTIVADA! Vídeo y audio cortados.', 'error');
     await onRefreshQueue();
-  }, [onNotification, onRefreshQueue]);
+  }, [onNotification, onRefreshQueue, clearFadeInTimer]);
 
   const handleSeek = useCallback(
     async (newTimeMs: number) => {
@@ -266,27 +325,6 @@ export const PlayerPanel: React.FC<PlayerPanelProps> = ({
     [durationMs],
   );
 
-  const handleVolumeChange = useCallback(
-    async (newVol: number) => {
-      if (!window.karaokeAPI) return;
-      const clamped = Math.max(0, Math.min(100, newVol));
-      setVolume(clamped);
-      if (videoRef.current) {
-        videoRef.current.volume = isMuted ? 0 : clamped / 100;
-      }
-      await window.karaokeAPI.sendPlayerCommand({ command: 'SET_VOLUME', volume: clamped });
-    },
-    [isMuted],
-  );
-
-  const handleToggleMute = useCallback(() => {
-    const nextMute = !isMuted;
-    setIsMuted(nextMute);
-    if (videoRef.current) {
-      videoRef.current.volume = nextMute ? 0 : volume / 100;
-    }
-  }, [isMuted, volume]);
-
   // Eventos nativos HTML5 del elemento <video>
   const handleTimeUpdate = () => {
     if (!videoRef.current || isSeeking) return;
@@ -301,7 +339,8 @@ export const PlayerPanel: React.FC<PlayerPanelProps> = ({
 
   const handleLoadedMetadata = () => {
     if (videoRef.current) {
-      videoRef.current.volume = isMuted ? 0 : volume / 100;
+      audioMixerEngine.registerKaraokeElement(videoRef.current);
+      videoRef.current.volume = getEffectiveKaraokeScalar();
       if (videoRef.current.duration && Number.isFinite(videoRef.current.duration)) {
         const durMs = Math.round(videoRef.current.duration * 1000);
         setDurationMs(durMs);
@@ -315,7 +354,8 @@ export const PlayerPanel: React.FC<PlayerPanelProps> = ({
 
   const handleCanPlay = () => {
     if (videoRef.current) {
-      videoRef.current.volume = isMuted ? 0 : volume / 100;
+      audioMixerEngine.registerKaraokeElement(videoRef.current);
+      videoRef.current.volume = getEffectiveKaraokeScalar();
       if (playbackStateRef.current === 'PLAYING' && videoRef.current.paused) {
         videoRef.current.play().catch(console.error);
       }
@@ -324,7 +364,6 @@ export const PlayerPanel: React.FC<PlayerPanelProps> = ({
 
   /**
    * INNEGOCIABLE: La finalización solo se procesa mediante el evento nativo 'ended' del elemento <video>.
-   * Queda terminantemente prohibido simular eventos con temporizadores artificiales.
    * Al finalizar una reproducción de karaoke, suena automáticamente un aplauso de 6 segundos.
    */
   const handleNativeEnded = async () => {
@@ -338,9 +377,13 @@ export const PlayerPanel: React.FC<PlayerPanelProps> = ({
     setCurrentTimeMs(0);
     updatePlaybackStateLocal('ENDED');
 
-    // Reproducir sonido de aplausos automáticamente durante 6 segundos
+    // Reproducir sonido de aplausos automáticamente durante 6 segundos respetando niveles
+    const applauseGain =
+      karaokeMuted || masterMuted
+        ? 0
+        : Math.max(0.35, (karaokeVolume / 100) * (masterVolume / 100));
     setIsApplauseActive(true);
-    playApplause(6000, isMuted ? 0 : Math.max(0.35, volume / 100), () => {
+    playApplause(6000, applauseGain, () => {
       setIsApplauseActive(false);
     });
 
@@ -350,7 +393,7 @@ export const PlayerPanel: React.FC<PlayerPanelProps> = ({
 
   const handleVideoError = (e: React.SyntheticEvent<HTMLVideoElement, Event>) => {
     console.error('[Reproductor] Error en elemento de video HTML5:', e);
-    onNotification('Error al decodificar el flujo multimedia local. Comprueba el códec del archivo.');
+    onNotification('Error al decodificar el flujo multimedia local. Comprueba el códec del archivo.', 'error');
   };
 
   // Atajos de teclado para el operador en directo
@@ -396,57 +439,60 @@ export const PlayerPanel: React.FC<PlayerPanelProps> = ({
     <section className="panel" aria-label="Reproductor y control en directo" style={{ flex: '1 1 360px' }}>
       <div className="panel-header">
         <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <Film size={18} color="var(--accent-warm)" />
-          Monitor de Reproducción
+          <Film size={17} color="#FFB100" />
+          MONITOR DE REPRODUCCIÓN
         </span>
 
         <span
           className="pill"
           style={{
-            fontSize: '11px',
-            fontWeight: 700,
-            padding: '2px 8px',
+            fontSize: '10px',
+            fontWeight: 800,
+            padding: '3px 9px',
+            borderRadius: '5px',
             backgroundColor:
               playbackState === 'PLAYING'
-                ? 'var(--status-ready)'
+                ? '#FFB100'
                 : playbackState === 'PAUSED'
-                  ? 'var(--accent-warm)'
+                  ? 'rgba(255, 177, 0, 0.25)'
                   : playbackState === 'READY'
-                    ? '#38bdf8'
-                    : 'var(--bg-surface-hover)',
+                    ? '#29C7FF'
+                    : '#1c2333',
             color:
-              playbackState === 'PLAYING' || playbackState === 'PAUSED' || playbackState === 'READY'
-                ? '#18181b'
-                : 'var(--text-secondary)',
+              playbackState === 'PLAYING' || playbackState === 'READY'
+                ? '#0C1017'
+                : playbackState === 'PAUSED'
+                  ? '#FFB100'
+                  : 'var(--text-secondary)',
           }}
         >
           {playbackState === 'PLAYING'
-            ? '● EN DIRECTO'
+            ? '▣ REPRODUCIENDO'
             : playbackState === 'PAUSED'
               ? '⏸ PAUSADO'
               : playbackState === 'READY'
-                ? 'LISTO'
+                ? '● LISTO'
                 : 'EN ESPERA'}
         </span>
       </div>
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', padding: '12px', overflowY: 'auto', flex: 1 }}>
-        {/* Vista previa de vídeo 16:9 */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', padding: '10px 12px', overflowY: 'auto', flex: 1 }}>
+        {/* Vista previa de vídeo 16:9 con estética de escenario */}
         <div
           style={{
             width: '100%',
             aspectRatio: '16 / 9',
-            minHeight: '165px',
-            maxHeight: '205px',
-            backgroundColor: '#000000',
+            minHeight: '148px',
+            maxHeight: '190px',
+            backgroundColor: '#07090e',
             borderRadius: '8px',
             overflow: 'hidden',
             position: 'relative',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            border: playbackState === 'PLAYING' ? '1px solid var(--status-ready)' : '1px solid var(--border-strong)',
-            boxShadow: '0 8px 20px rgba(0, 0, 0, 0.45)',
+            border: playbackState === 'PLAYING' ? '1px solid #FFB100' : '1px solid #242d3f',
+            boxShadow: '0 8px 20px rgba(0, 0, 0, 0.55)',
           }}
         >
           {isApplauseActive && !preparedTrack && (
@@ -455,29 +501,31 @@ export const PlayerPanel: React.FC<PlayerPanelProps> = ({
                 position: 'absolute',
                 inset: 0,
                 zIndex: 10,
-                background: 'radial-gradient(circle, rgba(245,158,11,0.22) 0%, rgba(10,10,14,0.95) 100%)',
+                background: 'radial-gradient(circle, rgba(255,177,0,0.22) 0%, rgba(7,9,14,0.96) 100%)',
                 display: 'flex',
                 flexDirection: 'column',
                 alignItems: 'center',
                 justifyContent: 'center',
-                gap: '8px',
+                gap: '6px',
                 textAlign: 'center',
-                padding: '16px',
+                padding: '14px',
               }}
             >
-              <Sparkles size={34} color="var(--accent-warm)" />
-              <div style={{ fontSize: '16px', fontWeight: 800, color: 'var(--accent-warm)' }}>
+              <Sparkles size={32} color="#FFB100" />
+              <div style={{ fontSize: '15px', fontWeight: 800, color: '#FFB100' }}>
                 👏 ¡APLAUSOS EN SALA! (6s)
               </div>
-              <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
-                Celebrando el final de la interpretación...
+              <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
+                Celebrando la actuación antes del intervalo...
               </div>
             </div>
           )}
+
           {preparedTrack ? (
             <>
               <video
                 ref={videoRef}
+                crossOrigin="anonymous"
                 src={preparedTrack.mediaUrl}
                 playsInline
                 onTimeUpdate={handleTimeUpdate}
@@ -501,9 +549,9 @@ export const PlayerPanel: React.FC<PlayerPanelProps> = ({
                     flexDirection: 'column',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    gap: '10px',
-                    background: 'radial-gradient(circle, rgba(32,32,38,0.92) 0%, rgba(10,10,14,0.98) 100%)',
-                    padding: '16px',
+                    gap: '8px',
+                    background: 'radial-gradient(circle, rgba(22,30,48,0.94) 0%, rgba(8,11,18,0.98) 100%)',
+                    padding: '14px',
                     textAlign: 'center',
                     pointerEvents: 'none',
                   }}
@@ -515,10 +563,10 @@ export const PlayerPanel: React.FC<PlayerPanelProps> = ({
                     <span className={playbackState === 'PLAYING' ? 'bar active' : 'bar'} />
                     <span className={playbackState === 'PLAYING' ? 'bar active' : 'bar'} />
                   </div>
-                  <div style={{ fontWeight: 700, fontSize: '15px', color: 'var(--text-primary)' }}>
+                  <div style={{ fontWeight: 700, fontSize: '14px', color: 'var(--text-primary)' }}>
                     {preparedTrack.title}
                   </div>
-                  <div style={{ fontSize: '12px', color: 'var(--accent-warm)' }}>
+                  <div style={{ fontSize: '11px', color: '#FFB100' }}>
                     Pista de Audio ({preparedTrack.extension?.toUpperCase()})
                   </div>
                 </div>
@@ -527,144 +575,97 @@ export const PlayerPanel: React.FC<PlayerPanelProps> = ({
           ) : (
             <div
               style={{
+                width: '100%',
+                height: '100%',
+                background:
+                  'radial-gradient(ellipse at 25% 0%, rgba(41, 199, 255, 0.22) 0%, transparent 55%), ' +
+                  'radial-gradient(ellipse at 75% 0%, rgba(59, 130, 246, 0.22) 0%, transparent 55%), ' +
+                  'linear-gradient(180deg, #0b101b 0%, #06080d 100%)',
                 display: 'flex',
                 flexDirection: 'column',
                 alignItems: 'center',
+                justifyContent: 'center',
                 gap: '8px',
-                color: 'var(--text-muted)',
+                color: 'var(--text-secondary)',
                 fontSize: '13px',
                 textAlign: 'center',
                 padding: '16px',
               }}
             >
-              <Film size={32} style={{ opacity: 0.4 }} />
-              <span style={{ fontWeight: 600, color: 'var(--text-secondary)' }}>
-                Monitor listo para reproducir
-              </span>
-              <span style={{ fontSize: '12px' }}>
-                Pulsa el botón <strong>Play</strong> en cualquier canción del Catálogo o de la Cola.
+              <Music size={36} color="#60a5fa" style={{ filter: 'drop-shadow(0 0 10px rgba(59,130,246,0.6))' }} />
+              <span style={{ fontWeight: 600, color: '#cbd5e1', fontSize: '13px' }}>
+                Monitor de Reproducción
               </span>
             </div>
           )}
-
-          {/* Badge flotante de atajo de emergencia */}
-          <div
-            style={{
-              position: 'absolute',
-              top: '8px',
-              right: '8px',
-              fontSize: '10px',
-              fontWeight: 600,
-              padding: '2px 6px',
-              borderRadius: '4px',
-              backgroundColor: 'rgba(0,0,0,0.75)',
-              color: 'var(--text-secondary)',
-              border: '1px solid var(--border-subtle)',
-              pointerEvents: 'none',
-            }}
-          >
-            Espacio: Play/Pausa • Esc: Parada
-          </div>
         </div>
 
-        {/* Metadatos de la Pista Actual */}
-        {preparedTrack ? (
+        {/* Metadatos compactos cuando hay pista cargada */}
+        {preparedTrack && (
           <div
             style={{
-              backgroundColor: 'var(--bg-surface-raised)',
-              border: '1px solid var(--border-subtle)',
+              backgroundColor: '#131924',
+              border: '1px solid #232b3a',
               borderRadius: '6px',
-              padding: '10px 12px',
+              padding: '6px 10px',
               display: 'flex',
-              flexDirection: 'column',
-              gap: '6px',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: '8px',
             }}
           >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}>
-              <div style={{ minWidth: 0 }}>
-                <h3
-                  style={{
-                    margin: 0,
-                    fontSize: '15px',
-                    fontWeight: 700,
-                    color: 'var(--text-primary)',
-                    whiteSpace: 'nowrap',
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                  }}
-                >
-                  {preparedTrack.title}
-                </h3>
-                <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
-                  {preparedTrack.artist}
-                </div>
-              </div>
-
+            <div style={{ minWidth: 0, flex: 1 }}>
               <div
+                style={{
+                  fontSize: '13px',
+                  fontWeight: 700,
+                  color: 'var(--text-primary)',
+                  whiteSpace: 'nowrap',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                }}
+              >
+                {preparedTrack.title} — <span style={{ color: 'var(--text-secondary)', fontWeight: 500 }}>{preparedTrack.artist}</span>
+              </div>
+              <div style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                <User size={11} color="#FFB100" />
+                <span>{preparedTrack.singerName}</span>
+              </div>
+            </div>
+
+            {preparedTrack.keyShift !== 0 && (
+              <span
                 style={{
                   display: 'flex',
                   alignItems: 'center',
-                  gap: '4px',
-                  backgroundColor: 'var(--bg-surface)',
-                  padding: '2px 8px',
+                  gap: '3px',
+                  backgroundColor: 'rgba(255, 177, 0, 0.14)',
+                  padding: '2px 6px',
                   borderRadius: '4px',
-                  fontSize: '11px',
-                  fontWeight: 700,
-                  color: 'var(--accent-warm)',
-                  border: '1px solid var(--border-subtle)',
-                  whiteSpace: 'nowrap',
+                  fontSize: '10px',
+                  fontWeight: 800,
+                  color: '#FFB100',
                 }}
-                title="Ajuste de semitonos"
               >
-                <Music2 size={12} />
-                <span>
-                  {preparedTrack.keyShift > 0 ? `+${preparedTrack.keyShift}` : preparedTrack.keyShift} st
-                </span>
-              </div>
-            </div>
-
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '12px', color: 'var(--text-muted)' }}>
-              <span style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-                <User size={13} color="var(--accent-warm)" />
-                <strong style={{ color: 'var(--text-secondary)' }}>Intérprete:</strong> {preparedTrack.singerName}
+                <Music2 size={10} />
+                {preparedTrack.keyShift > 0 ? `+${preparedTrack.keyShift}` : preparedTrack.keyShift} st
               </span>
-              {preparedTrack.extension && (
-                <span style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', textTransform: 'uppercase' }}>
-                  {preparedTrack.extension.replace('.', '')}
-                </span>
-              )}
-            </div>
-          </div>
-        ) : (
-          <div
-            style={{
-              padding: '10px 12px',
-              borderRadius: '6px',
-              backgroundColor: 'var(--bg-surface-raised)',
-              border: '1px dashed var(--border-subtle)',
-              fontSize: '12px',
-              color: 'var(--text-muted)',
-              textAlign: 'center',
-            }}
-          >
-            Sin pista cargada actualmente.
+            )}
           </div>
         )}
 
         {/* Barra de Progreso y Tiempo */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-          <div
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <span
             style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              fontSize: '12px',
+              fontSize: '11px',
               color: 'var(--text-secondary)',
               fontFamily: 'var(--font-mono)',
+              minWidth: '32px',
             }}
           >
-            <span>{formatTime(currentTimeMs)}</span>
-            <span>-{formatTime(Math.max(0, durationMs - currentTimeMs))} / {formatTime(durationMs)}</span>
-          </div>
+            {formatTime(currentTimeMs)}
+          </span>
 
           <input
             type="range"
@@ -682,23 +683,34 @@ export const PlayerPanel: React.FC<PlayerPanelProps> = ({
               handleSeek(Number((e.target as HTMLInputElement).value));
             }}
             style={{
-              width: '100%',
+              flex: 1,
               cursor: preparedTrack ? 'pointer' : 'not-allowed',
-              accentColor: 'var(--accent-warm)',
+              accentColor: '#FFB100',
             }}
           />
+
+          <span
+            style={{
+              fontSize: '11px',
+              color: 'var(--text-secondary)',
+              fontFamily: 'var(--font-mono)',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            -{formatTime(Math.max(0, durationMs - currentTimeMs))} / {formatTime(durationMs)}
+          </span>
         </div>
 
-        {/* Botonera de Transporte Completo */}
+        {/* Botonera de Transporte Completo (Estilo Pro Studio DJ) */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
           <button
             className="btn btn-icon"
             onClick={handleRestartTrack}
             disabled={!preparedTrack}
             title="Repetir / Reiniciar pista desde 0:00"
-            style={{ width: '36px', height: '36px', minWidth: '36px', minHeight: '36px' }}
+            style={{ width: '34px', height: '34px', minWidth: '34px', minHeight: '34px', backgroundColor: '#171e2c' }}
           >
-            <SkipBack size={16} />
+            <SkipBack size={15} />
           </button>
 
           <button
@@ -706,9 +718,9 @@ export const PlayerPanel: React.FC<PlayerPanelProps> = ({
             onClick={() => handleSeek(currentTimeMs - 5000)}
             disabled={!preparedTrack}
             title="Retroceder 5 segundos (Flecha Izq)"
-            style={{ width: '36px', height: '36px', minWidth: '36px', minHeight: '36px' }}
+            style={{ width: '34px', height: '34px', minWidth: '34px', minHeight: '34px', backgroundColor: '#171e2c' }}
           >
-            <RotateCcw size={16} />
+            <RotateCcw size={15} />
           </button>
 
           <button
@@ -716,15 +728,19 @@ export const PlayerPanel: React.FC<PlayerPanelProps> = ({
             onClick={handleTogglePlay}
             title={playbackState === 'PLAYING' ? 'Pausar (Espacio)' : 'Reproducir (Espacio)'}
             style={{
-              height: '42px',
-              minHeight: '42px',
+              height: '36px',
+              minHeight: '36px',
               padding: '0 20px',
-              fontSize: '14px',
-              fontWeight: 700,
+              fontSize: '13px',
+              fontWeight: 800,
               gap: '6px',
+              backgroundColor: '#FFB100',
+              borderColor: '#FFB100',
+              color: '#0C1017',
+              boxShadow: '0 2px 10px rgba(255, 177, 0, 0.3)',
             }}
           >
-            {playbackState === 'PLAYING' ? <Pause size={18} /> : <Play size={18} fill="currentColor" />}
+            {playbackState === 'PLAYING' ? <Pause size={16} /> : <Play size={16} fill="currentColor" />}
             {playbackState === 'PLAYING' ? 'Pausar' : 'Reproducir'}
           </button>
 
@@ -733,9 +749,9 @@ export const PlayerPanel: React.FC<PlayerPanelProps> = ({
             onClick={() => handleSeek(currentTimeMs + 5000)}
             disabled={!preparedTrack}
             title="Avanzar 5 segundos (Flecha Der)"
-            style={{ width: '36px', height: '36px', minWidth: '36px', minHeight: '36px' }}
+            style={{ width: '34px', height: '34px', minWidth: '34px', minHeight: '34px', backgroundColor: '#171e2c' }}
           >
-            <RotateCw size={16} />
+            <RotateCw size={15} />
           </button>
 
           {onSkipTrack && (
@@ -743,9 +759,9 @@ export const PlayerPanel: React.FC<PlayerPanelProps> = ({
               className="btn btn-icon"
               onClick={onSkipTrack}
               title="Saltar a la siguiente canción de la cola"
-              style={{ width: '36px', height: '36px', minWidth: '36px', minHeight: '36px' }}
+              style={{ width: '34px', height: '34px', minWidth: '34px', minHeight: '34px', backgroundColor: '#171e2c' }}
             >
-              <SkipForward size={16} />
+              <SkipForward size={15} />
             </button>
           )}
 
@@ -754,72 +770,26 @@ export const PlayerPanel: React.FC<PlayerPanelProps> = ({
             onClick={handleStop}
             disabled={!preparedTrack || playbackState === 'IDLE'}
             title="Detener pista"
-            style={{ width: '36px', height: '36px', minWidth: '36px', minHeight: '36px' }}
+            style={{ width: '34px', height: '34px', minWidth: '34px', minHeight: '34px', backgroundColor: '#171e2c' }}
           >
-            <Square size={16} />
+            <Square size={15} />
           </button>
-        </div>
-
-        {/* Control de Volumen Sala y Audio de Cabina */}
-        <div
-          style={{
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '8px',
-            backgroundColor: 'var(--bg-surface-raised)',
-            padding: '10px 12px',
-            borderRadius: '6px',
-            border: '1px solid var(--border-subtle)',
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <Volume2 size={14} color="var(--accent-warm)" />
-              Volumen General ({volume}%)
-            </span>
-
-            <button
-              type="button"
-              className="btn"
-              onClick={handleToggleMute}
-              title="Silenciar únicamente el audio de esta ventana de cabina sin afectar la Pantalla Pública"
-              style={{
-                height: '26px',
-                minHeight: '26px',
-                padding: '0 8px',
-                fontSize: '11px',
-                gap: '4px',
-                backgroundColor: isMuted ? 'rgba(239, 68, 68, 0.15)' : 'var(--bg-surface)',
-                color: isMuted ? 'var(--status-error)' : 'var(--text-secondary)',
-                borderColor: isMuted ? 'var(--status-error)' : 'var(--border-subtle)',
-              }}
-            >
-              {isMuted ? <VolumeX size={12} /> : <Headphones size={12} />}
-              {isMuted ? 'Cabina Silenciada' : 'Audio Cabina: Activo'}
-            </button>
-          </div>
-
-          <input
-            type="range"
-            min={0}
-            max={100}
-            value={volume}
-            onChange={(e) => handleVolumeChange(Number(e.target.value))}
-            style={{
-              width: '100%',
-              cursor: 'pointer',
-              accentColor: 'var(--accent-warm)',
-            }}
-          />
         </div>
 
         {/* Apartado de Música de Ambiente (Solo MP3) en la pantalla principal */}
         <AmbientMusicPanel
           isKaraokeActive={playbackState === 'PLAYING'}
           isApplauseActive={isApplauseActive}
-          initialVolume={ambientVolume}
+          ambientVolume={ambientVolume}
+          masterVolume={masterVolume}
+          ambientMuted={ambientMuted}
+          masterMuted={masterMuted}
+          crossfadeEnabled={crossfadeEnabled}
+          crossfadeDurationSec={crossfadeDurationSec}
           refreshTrigger={catalogRefreshTrigger}
-          onVolumeSave={onSaveAmbientVolume}
+          onChangeAmbientVolume={onChangeAmbientVolume}
+          onToggleAmbientMute={onToggleAmbientMute}
+          onCrossfadeStateChange={onCrossfadeStateChange}
           onNotification={onNotification}
           emergencyStopSignal={emergencyStopSignal}
         />

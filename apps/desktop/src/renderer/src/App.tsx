@@ -1,10 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Header } from './components/Header.js';
 import { SettingsModal } from './components/SettingsModal.js';
 import { SessionBanner } from './components/SessionBanner.js';
 import { CatalogPanel } from './components/CatalogPanel.js';
 import { QueuePanel } from './components/QueuePanel.js';
 import { PlayerPanel } from './components/PlayerPanel.js';
+import { AudioMixerDrawer } from './components/AudioMixerDrawer.js';
 import { FolderManagerModal } from './components/FolderManagerModal.js';
 import { EditSongModal } from './components/EditSongModal.js';
 import { SongDetailsModal } from './components/SongDetailsModal.js';
@@ -22,7 +23,7 @@ import {
   SingerDTO,
   QueueStatus,
 } from '@karaoke/contracts';
-import { AlertOctagon, CheckCircle2, AlertTriangle } from 'lucide-react';
+import { AlertCircle, CheckCircle2, AlertTriangle } from 'lucide-react';
 import { PlayerPrepareResult } from '../../preload/types.js';
 
 export const App: React.FC = () => {
@@ -36,6 +37,20 @@ export const App: React.FC = () => {
   const [isPublicScreenOpen, setIsPublicScreenOpen] = useState<boolean>(false);
   const [catalogRefreshTrigger, setCatalogRefreshTrigger] = useState<number>(0);
   const [emergencyStopSignal, setEmergencyStopSignal] = useState<number>(0);
+
+  // Estado en tiempo real del Mezclador Profesional DJ (3 Canales + Crossfade)
+  const [karaokeVolume, setKaraokeVolume] = useState<number>(80);
+  const [ambientVolume, setAmbientVolume] = useState<number>(35);
+  const [masterVolume, setMasterVolume] = useState<number>(100);
+  const [karaokeMuted, setKaraokeMuted] = useState<boolean>(false);
+  const [ambientMuted, setAmbientMuted] = useState<boolean>(false);
+  const [masterMuted, setMasterMuted] = useState<boolean>(false);
+  const [crossfadeEnabled, setCrossfadeEnabled] = useState<boolean>(true);
+  const [crossfadeDurationSec, setCrossfadeDurationSec] = useState<number>(3);
+  const [mixerExpanded, setMixerExpanded] = useState<boolean>(false);
+  const [isCrossfading, setIsCrossfading] = useState<boolean>(false);
+
+  const persistTimerRef = useRef<number | null>(null);
 
   // Modales
   const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
@@ -71,6 +86,23 @@ export const App: React.FC = () => {
     return () => clearTimeout(t);
   }, [toast]);
 
+  const persistSettingsDebounced = (updates: UpdateSettingsDTO) => {
+    if (!window.karaokeAPI) return;
+    if (persistTimerRef.current) {
+      window.clearTimeout(persistTimerRef.current);
+    }
+    persistTimerRef.current = window.setTimeout(async () => {
+      try {
+        const res = await window.karaokeAPI.updateSettings(updates);
+        if (res.success) {
+          setSettings(res.data);
+        }
+      } catch {
+        // Ignorar errores transitorios de guardado
+      }
+    }, 180);
+  };
+
   const refreshFolders = async () => {
     if (!window.karaokeAPI) return [];
     const res = await window.karaokeAPI.listFolders();
@@ -102,8 +134,18 @@ export const App: React.FC = () => {
       try {
         if (window.karaokeAPI) {
           const settingsRes = await window.karaokeAPI.getSettings();
-          if (settingsRes.success) {
-            setSettings(settingsRes.data);
+          if (settingsRes.success && settingsRes.data) {
+            const s = settingsRes.data;
+            setSettings(s);
+            setKaraokeVolume(s.karaokeVolume ?? 80);
+            setAmbientVolume(s.ambientVolume ?? 35);
+            setMasterVolume(s.masterVolume ?? 100);
+            setKaraokeMuted(Boolean(s.karaokeMuted));
+            setAmbientMuted(Boolean(s.ambientMuted));
+            setMasterMuted(Boolean(s.masterMuted));
+            setCrossfadeEnabled(s.crossfadeEnabled ?? true);
+            setCrossfadeDurationSec(s.crossfadeDurationSec ?? 3);
+            setMixerExpanded(Boolean(s.mixerExpanded));
           }
 
           const sessionRes = await window.karaokeAPI.getCurrentSession();
@@ -170,10 +212,86 @@ export const App: React.FC = () => {
   const handleSaveSettings = async (updates: UpdateSettingsDTO) => {
     if (!window.karaokeAPI) return;
     const res = await window.karaokeAPI.updateSettings(updates);
-    if (res.success) {
-      setSettings(res.data);
+    if (res.success && res.data) {
+      const s = res.data;
+      setSettings(s);
+      if (updates.karaokeVolume !== undefined) setKaraokeVolume(s.karaokeVolume);
+      if (updates.ambientVolume !== undefined) setAmbientVolume(s.ambientVolume);
+      if (updates.masterVolume !== undefined) setMasterVolume(s.masterVolume);
+      if (updates.karaokeMuted !== undefined) setKaraokeMuted(s.karaokeMuted);
+      if (updates.ambientMuted !== undefined) setAmbientMuted(s.ambientMuted);
+      if (updates.masterMuted !== undefined) setMasterMuted(s.masterMuted);
+      if (updates.crossfadeEnabled !== undefined) setCrossfadeEnabled(s.crossfadeEnabled);
+      if (updates.crossfadeDurationSec !== undefined) setCrossfadeDurationSec(s.crossfadeDurationSec);
+      if (updates.mixerExpanded !== undefined) setMixerExpanded(s.mixerExpanded);
       showNotice('Configuración guardada en SQLite.');
     }
+  };
+
+  // Handlers del Mezclador Profesional DJ
+  const handleKaraokeVolumeChange = (vol: number) => {
+    setKaraokeVolume(vol);
+    if (karaokeMuted && vol > 0) {
+      setKaraokeMuted(false);
+      persistSettingsDebounced({ karaokeVolume: vol, karaokeMuted: false });
+    } else {
+      persistSettingsDebounced({ karaokeVolume: vol });
+    }
+  };
+
+  const handleAmbientVolumeChange = (vol: number) => {
+    setAmbientVolume(vol);
+    if (ambientMuted && vol > 0) {
+      setAmbientMuted(false);
+      persistSettingsDebounced({ ambientVolume: vol, ambientMuted: false });
+    } else {
+      persistSettingsDebounced({ ambientVolume: vol });
+    }
+  };
+
+  const handleMasterVolumeChange = (vol: number) => {
+    setMasterVolume(vol);
+    if (masterMuted && vol > 0) {
+      setMasterMuted(false);
+      persistSettingsDebounced({ masterVolume: vol, masterMuted: false });
+    } else {
+      persistSettingsDebounced({ masterVolume: vol });
+    }
+  };
+
+  const handleToggleKaraokeMute = () => {
+    const next = !karaokeMuted;
+    setKaraokeMuted(next);
+    window.karaokeAPI?.updateSettings({ karaokeMuted: next });
+  };
+
+  const handleToggleAmbientMute = () => {
+    const next = !ambientMuted;
+    setAmbientMuted(next);
+    window.karaokeAPI?.updateSettings({ ambientMuted: next });
+  };
+
+  const handleToggleMasterMute = () => {
+    const next = !masterMuted;
+    setMasterMuted(next);
+    window.karaokeAPI?.updateSettings({ masterMuted: next });
+  };
+
+  const handleToggleCrossfade = (next?: boolean) => {
+    const val = typeof next === 'boolean' ? next : !crossfadeEnabled;
+    setCrossfadeEnabled(val);
+    window.karaokeAPI?.updateSettings({ crossfadeEnabled: val });
+  };
+
+  const handleCrossfadeDurationChange = (sec: number) => {
+    setCrossfadeDurationSec(sec);
+    window.karaokeAPI?.updateSettings({ crossfadeDurationSec: sec });
+  };
+
+  const handleToggleMixerExpanded = (next?: boolean) => {
+    const val = typeof next === 'boolean' ? next : !mixerExpanded;
+    setMixerExpanded(val);
+    window.karaokeAPI?.updateSettings({ mixerExpanded: val });
   };
 
   const handleOpenSession = async (name: string) => {
@@ -541,7 +659,7 @@ export const App: React.FC = () => {
         onOpenWizard={() => setIsWizardOpen(true)}
       />
 
-      <div style={{ padding: '8px 16px', backgroundColor: 'var(--bg-surface)', borderBottom: '1px solid var(--border-subtle)' }}>
+      <div className="session-banner-wrapper">
         <SessionBanner
           currentSession={currentSession}
           onOpenSession={handleOpenSession}
@@ -574,7 +692,7 @@ export const App: React.FC = () => {
           scanProgress={scanProgress}
         />
 
-        {/* Panel 2: Cola de Actuaciones */}
+        {/* Panel 2: Cola y Escenario */}
         <QueuePanel
           sessionId={currentSession?.id}
           queue={queue}
@@ -589,7 +707,7 @@ export const App: React.FC = () => {
           onOpenAddSinger={() => setIsAddSingerOpen(true)}
         />
 
-        {/* Panel 3: Reproductor y Control en Vivo */}
+        {/* Panel 3: Monitor de Reproducción y Música de Ambiente */}
         <PlayerPanel
           queue={queue}
           onRefreshQueue={async () => {
@@ -599,14 +717,44 @@ export const App: React.FC = () => {
           preparedTrack={preparedTrack}
           onSetPreparedTrack={setPreparedTrack}
           onSkipTrack={handleSkipTrack}
-          ambientVolume={settings?.ambientVolume ?? 35}
-          onSaveAmbientVolume={(vol) => {
-            window.karaokeAPI?.updateSettings({ ambientVolume: vol });
-          }}
+          karaokeVolume={karaokeVolume}
+          ambientVolume={ambientVolume}
+          masterVolume={masterVolume}
+          karaokeMuted={karaokeMuted}
+          ambientMuted={ambientMuted}
+          masterMuted={masterMuted}
+          crossfadeEnabled={crossfadeEnabled}
+          crossfadeDurationSec={crossfadeDurationSec}
+          onChangeAmbientVolume={handleAmbientVolumeChange}
+          onToggleAmbientMute={handleToggleAmbientMute}
+          onCrossfadeStateChange={setIsCrossfading}
           catalogRefreshTrigger={catalogRefreshTrigger}
           emergencyStopSignal={emergencyStopSignal}
         />
       </main>
+
+      {/* Mezclador de Audio Profesional DJ Desplegable */}
+      <AudioMixerDrawer
+        expanded={mixerExpanded}
+        onToggleExpanded={handleToggleMixerExpanded}
+        karaokeVolume={karaokeVolume}
+        ambientVolume={ambientVolume}
+        masterVolume={masterVolume}
+        karaokeMuted={karaokeMuted}
+        ambientMuted={ambientMuted}
+        masterMuted={masterMuted}
+        crossfadeEnabled={crossfadeEnabled}
+        crossfadeDurationSec={crossfadeDurationSec}
+        isCrossfading={isCrossfading}
+        onChangeKaraokeVolume={handleKaraokeVolumeChange}
+        onChangeAmbientVolume={handleAmbientVolumeChange}
+        onChangeMasterVolume={handleMasterVolumeChange}
+        onToggleKaraokeMute={handleToggleKaraokeMute}
+        onToggleAmbientMute={handleToggleAmbientMute}
+        onToggleMasterMute={handleToggleMasterMute}
+        onToggleCrossfade={handleToggleCrossfade}
+        onChangeCrossfadeDuration={handleCrossfadeDurationChange}
+      />
 
       <footer className="footer-bar">
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -633,14 +781,16 @@ export const App: React.FC = () => {
           style={{
             height: '28px',
             minHeight: '28px',
-            padding: '0 10px',
+            padding: '0 12px',
             fontSize: '11px',
-            fontWeight: 700,
-            gap: '5px',
+            fontWeight: 800,
+            gap: '6px',
+            borderRadius: '6px',
+            textTransform: 'uppercase',
           }}
         >
-          <AlertOctagon size={14} />
-          Parada de Emergencia (Esc)
+          <AlertCircle size={14} />
+          PARADA DE EMERGENCIA (Esc)
         </button>
       </footer>
 

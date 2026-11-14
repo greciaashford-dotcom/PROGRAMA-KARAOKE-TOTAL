@@ -110,6 +110,7 @@ export function registerMediaProtocol(mediaRepo: MediaRepository): void {
         'Content-Length': String(byteRange.chunkSize),
         'Accept-Ranges': 'bytes',
         'Cache-Control': 'no-cache',
+        'Access-Control-Allow-Origin': '*',
       };
 
       if (isPartial) {

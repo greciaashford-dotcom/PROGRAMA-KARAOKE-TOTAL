@@ -32,9 +32,9 @@ export const SessionBanner: React.FC<SessionBannerProps> = ({
     return (
       <div
         style={{
-          backgroundColor: 'var(--bg-surface-raised)',
-          padding: '10px 16px',
-          borderRadius: '6px',
+          backgroundColor: 'var(--bg-surface)',
+          padding: '6px 14px',
+          borderRadius: '8px',
           border: '1px solid var(--border-subtle)',
           display: 'flex',
           alignItems: 'center',
@@ -42,30 +42,30 @@ export const SessionBanner: React.FC<SessionBannerProps> = ({
           gap: '12px',
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <strong style={{ color: 'var(--accent-warm)', fontSize: '14px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <strong style={{ color: 'var(--accent-warm)', fontSize: '13px' }}>
             Modo Libre / Sin Sesión de Cola:
           </strong>
-          <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
-            Puedes reproducir vídeos directamente con el botón ▶ del catálogo, o iniciar una sesión para gestionar turnos de cantantes.
+          <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+            Reproduce vídeos directamente con el botón ▶ del catálogo, o inicia una sesión para gestionar turnos de cantantes.
           </span>
         </div>
 
         {isCreating ? (
-          <form onSubmit={handleCreate} style={{ display: 'flex', gap: '8px' }}>
+          <form onSubmit={handleCreate} style={{ display: 'flex', gap: '6px' }}>
             <input
               type="text"
               className="form-input"
-              placeholder="Nombre (ej. Noche de Viernes)"
+              placeholder="Nombre (ej. Sesión en Directo)"
               value={newSessionName}
               onChange={(e) => setNewSessionName(e.target.value)}
               autoFocus
-              style={{ minWidth: '220px', minHeight: '36px', height: '36px', fontSize: '14px' }}
+              style={{ minWidth: '200px', minHeight: '30px', height: '30px', fontSize: '12.5px' }}
             />
             <button
               type="submit"
               className="btn btn-primary"
-              style={{ height: '36px', minHeight: '36px', fontSize: '13px' }}
+              style={{ height: '30px', minHeight: '30px', fontSize: '12px', padding: '0 12px' }}
             >
               Iniciar
             </button>
@@ -73,7 +73,7 @@ export const SessionBanner: React.FC<SessionBannerProps> = ({
               type="button"
               className="btn"
               onClick={() => setIsCreating(false)}
-              style={{ height: '36px', minHeight: '36px', fontSize: '13px' }}
+              style={{ height: '30px', minHeight: '30px', fontSize: '12px', padding: '0 10px' }}
             >
               Cancelar
             </button>
@@ -82,9 +82,9 @@ export const SessionBanner: React.FC<SessionBannerProps> = ({
           <button
             className="btn btn-primary"
             onClick={() => setIsCreating(true)}
-            style={{ height: '36px', minHeight: '36px', fontSize: '13px', whiteSpace: 'nowrap' }}
+            style={{ height: '30px', minHeight: '30px', fontSize: '12px', padding: '0 12px', whiteSpace: 'nowrap' }}
           >
-            <Plus size={16} />
+            <Plus size={14} />
             Nueva Sesión
           </button>
         )}
@@ -97,34 +97,47 @@ export const SessionBanner: React.FC<SessionBannerProps> = ({
   return (
     <div
       style={{
-        backgroundColor: 'var(--bg-surface-raised)',
-        padding: '8px 16px',
-        borderRadius: '6px',
+        backgroundColor: 'var(--bg-surface)',
+        padding: '6px 14px',
+        borderRadius: '8px',
         border: '1px solid var(--border-subtle)',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
       }}
     >
-      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
         {isPaused ? (
-          <PauseCircle size={22} color="var(--status-warning)" />
+          <PauseCircle size={19} color="var(--status-warning)" />
         ) : (
-          <PlayCircle size={22} color="var(--status-ready)" />
+          <PlayCircle size={19} color="var(--status-ready)" />
         )}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <span style={{ fontWeight: 700, fontSize: '15px' }}>{currentSession.name}</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <span style={{ fontWeight: 700, fontSize: '13.5px', color: 'var(--text-primary)' }}>
+            {currentSession.name}
+          </span>
+          <span style={{ color: 'var(--text-muted)' }}>•</span>
           <span
             className="pill"
             style={{
-              fontSize: '11px',
+              fontSize: '10px',
               backgroundColor: isPaused ? 'var(--status-warning)' : 'var(--status-ready)',
-              color: '#18181b',
+              color: '#052e16',
+              padding: '2px 7px',
+              borderRadius: '4px',
             }}
           >
             {isPaused ? 'PAUSADA' : 'ABIERTA'}
           </span>
-          <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+          <span
+            style={{
+              fontSize: '12px',
+              color: 'var(--text-secondary)',
+              borderLeft: '1px solid var(--border-subtle)',
+              paddingLeft: '10px',
+              marginLeft: '4px',
+            }}
+          >
             Iniciada a las {new Date(currentSession.openedAt).toLocaleTimeString('es-ES')}
           </span>
         </div>
@@ -135,9 +148,9 @@ export const SessionBanner: React.FC<SessionBannerProps> = ({
           <button
             className="btn btn-primary"
             onClick={() => onResumeSession(currentSession.id)}
-            style={{ height: '34px', minHeight: '34px', fontSize: '13px', padding: '0 12px' }}
+            style={{ height: '30px', minHeight: '30px', fontSize: '12px', padding: '0 12px' }}
           >
-            <PlayCircle size={15} />
+            <PlayCircle size={14} />
             Reanudar Sesión
           </button>
         )}
@@ -146,9 +159,9 @@ export const SessionBanner: React.FC<SessionBannerProps> = ({
           <button
             className="btn"
             onClick={() => onPauseSession(currentSession.id)}
-            style={{ height: '34px', minHeight: '34px', fontSize: '13px', padding: '0 12px' }}
+            style={{ height: '30px', minHeight: '30px', fontSize: '12px', padding: '0 12px' }}
           >
-            <PauseCircle size={15} />
+            <PauseCircle size={14} />
             Pausar Sesión
           </button>
         )}
@@ -157,9 +170,9 @@ export const SessionBanner: React.FC<SessionBannerProps> = ({
           className="btn"
           onClick={() => onCloseSession(currentSession.id)}
           title="Cerrar la sesión actual"
-          style={{ height: '34px', minHeight: '34px', fontSize: '13px', padding: '0 12px' }}
+          style={{ height: '30px', minHeight: '30px', fontSize: '12px', padding: '0 12px' }}
         >
-          <StopCircle size={15} />
+          <StopCircle size={14} />
           Cerrar Sesión
         </button>
       </div>

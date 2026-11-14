@@ -154,7 +154,29 @@ export const initialMigration: Migration = {
   },
 };
 
-export const MIGRATIONS: Migration[] = [initialMigration];
+export const mixerSettingsMigration: Migration = {
+  id: '0002_pro_studio_mixer_settings',
+  name: 'Preferencias del mezclador DJ Pro Studio y crossfade automático',
+  up: (sqlite: DatabaseInstance) => {
+    const columns = sqlite.prepare("PRAGMA table_info('settings')").all() as { name: string }[];
+    const existingCols = new Set(columns.map((c) => c.name));
+
+    const addColumnIfMissing = (colDef: string, colName: string) => {
+      if (!existingCols.has(colName)) {
+        sqlite.exec(`ALTER TABLE settings ADD COLUMN ${colDef};`);
+      }
+    };
+
+    addColumnIfMissing('karaoke_muted INTEGER NOT NULL DEFAULT 0', 'karaoke_muted');
+    addColumnIfMissing('ambient_muted INTEGER NOT NULL DEFAULT 0', 'ambient_muted');
+    addColumnIfMissing('master_muted INTEGER NOT NULL DEFAULT 0', 'master_muted');
+    addColumnIfMissing('crossfade_enabled INTEGER NOT NULL DEFAULT 1', 'crossfade_enabled');
+    addColumnIfMissing('crossfade_duration_sec INTEGER NOT NULL DEFAULT 3', 'crossfade_duration_sec');
+    addColumnIfMissing('mixer_expanded INTEGER NOT NULL DEFAULT 0', 'mixer_expanded');
+  },
+};
+
+export const MIGRATIONS: Migration[] = [initialMigration, mixerSettingsMigration];
 
 export function runMigrations(
   sqlite: DatabaseInstance,

@@ -14,6 +14,8 @@ import {
   Users,
   UserPlus,
   Activity,
+  Mic,
+  Music,
 } from 'lucide-react';
 import {
   QueueItemDTO,
@@ -64,7 +66,7 @@ export const QueuePanel: React.FC<QueuePanelProps> = ({
     ['COMPLETED', 'CANCELLED', 'SKIPPED', 'FAILED'].includes(item.status),
   );
 
-  const nextUp = activeItems.find((item) => item.status !== 'PLAYING');
+  const nextUp = activeItems.find((item) => item.status !== 'PLAYING') || activeItems[0];
 
   useEffect(() => {
     if (activeTab === 'EVENTS' && sessionId && window.karaokeAPI) {
@@ -215,13 +217,13 @@ export const QueuePanel: React.FC<QueuePanelProps> = ({
                 justifyContent: 'center',
                 gap: '5px',
                 height: '30px',
-                borderRadius: '4px',
-                border: 'none',
+                borderRadius: '6px',
+                border: isActive ? '1px solid rgba(255, 177, 0, 0.55)' : '1px solid transparent',
                 fontSize: '11px',
                 fontWeight: 700,
                 cursor: 'pointer',
-                backgroundColor: isActive ? 'var(--bg-surface-raised)' : 'transparent',
-                color: isActive ? 'var(--accent-warm)' : 'var(--text-muted)',
+                backgroundColor: isActive ? 'rgba(255, 177, 0, 0.14)' : 'transparent',
+                color: isActive ? '#FFB100' : 'var(--text-muted)',
               }}
             >
               <Icon size={13} />
@@ -231,39 +233,111 @@ export const QueuePanel: React.FC<QueuePanelProps> = ({
         })}
       </div>
 
+      {/* Recuadro destacado: PRÓXIMO CANTANTE */}
       {activeTab === 'ACTIVE' && nextUp && (
         <div
           style={{
-            backgroundColor: 'rgba(217, 119, 6, 0.1)',
-            padding: '8px 14px',
-            borderBottom: '1px solid var(--border-subtle)',
+            margin: '8px 8px 0 8px',
+            background:
+              'linear-gradient(135deg, rgba(255, 177, 0, 0.16) 0%, rgba(22, 28, 40, 0.96) 65%, rgba(255, 177, 0, 0.08) 100%)',
+            border: '1px solid rgba(255, 177, 0, 0.6)',
+            boxShadow: '0 4px 16px rgba(0, 0, 0, 0.35)',
+            borderRadius: '8px',
+            padding: '10px 14px',
             display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            fontSize: '13px',
+            flexDirection: 'column',
+            gap: '6px',
           }}
         >
-          <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            <span style={{ color: 'var(--accent-warm)', fontWeight: 800, marginRight: '6px' }}>
-              SIGUIENTE:
-            </span>
-            <strong>{nextUp.singer?.displayName}</strong>{' '}
-            <span style={{ color: 'var(--text-secondary)' }}>
-              — {nextUp.song?.title}
-            </span>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <Mic size={15} color="#FFB100" />
+              <span
+                style={{
+                  fontSize: '11px',
+                  fontWeight: 800,
+                  letterSpacing: '0.6px',
+                  color: '#FFB100',
+                  textTransform: 'uppercase',
+                }}
+              >
+                PRÓXIMO CANTANTE
+              </span>
+              <span
+                style={{
+                  fontSize: '10px',
+                  fontWeight: 800,
+                  padding: '1px 6px',
+                  borderRadius: '4px',
+                  backgroundColor: 'rgba(255, 255, 255, 0.08)',
+                  color: 'var(--text-secondary)',
+                  fontFamily: 'var(--font-mono)',
+                }}
+              >
+                Posición #{nextUp.position}
+              </span>
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <span
+                style={{
+                  fontSize: '10px',
+                  fontWeight: 800,
+                  padding: '2px 8px',
+                  borderRadius: '4px',
+                  backgroundColor: nextUp.status === 'PLAYING' ? '#10B981' : '#FFB100',
+                  color: '#0C1017',
+                }}
+              >
+                {nextUp.status === 'PLAYING' ? 'EN ESCENARIO' : 'SIGUIENTE TURNO'}
+              </span>
+
+              {onPlayQueueItemNow && nextUp.status !== 'PLAYING' && (
+                <button
+                  className="btn btn-success"
+                  onClick={() => onPlayQueueItemNow(nextUp)}
+                  style={{ height: '24px', minHeight: '24px', padding: '0 8px', fontSize: '11px', gap: '4px' }}
+                  title="Lanzar siguiente turno al reproductor y reproducir"
+                >
+                  <Play size={11} fill="currentColor" />
+                  Lanzar
+                </button>
+              )}
+            </div>
           </div>
 
-          {onPlayQueueItemNow && (
-            <button
-              className="btn btn-success"
-              onClick={() => onPlayQueueItemNow(nextUp)}
-              style={{ height: '26px', minHeight: '26px', padding: '0 8px', fontSize: '11px', gap: '4px' }}
-              title="Lanzar siguiente turno al reproductor y reproducir"
-            >
-              <Play size={12} fill="currentColor" />
-              Lanzar
-            </button>
-          )}
+          <div
+            style={{
+              fontSize: '18px',
+              fontWeight: 800,
+              color: '#f8fafc',
+              lineHeight: 1.2,
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {nextUp.singer?.displayName || 'Cantante'}
+          </div>
+
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              fontSize: '12px',
+              color: '#e2e8f0',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            <Music size={13} color="#FFB100" style={{ flexShrink: 0 }} />
+            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              <strong>{nextUp.song?.title}</strong> –{' '}
+              <span style={{ color: 'var(--text-secondary)' }}>{nextUp.song?.artist}</span>
+            </span>
+          </div>
         </div>
       )}
 

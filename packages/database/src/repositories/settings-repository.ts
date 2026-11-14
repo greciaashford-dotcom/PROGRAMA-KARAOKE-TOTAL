@@ -20,6 +20,12 @@ export class SettingsRepository {
         masterVolume: row.masterVolume,
         karaokeVolume: row.karaokeVolume,
         ambientVolume: row.ambientVolume,
+        karaokeMuted: Boolean(row.karaokeMuted),
+        ambientMuted: Boolean(row.ambientMuted),
+        masterMuted: Boolean(row.masterMuted),
+        crossfadeEnabled: row.crossfadeEnabled !== undefined ? Boolean(row.crossfadeEnabled) : true,
+        crossfadeDurationSec: row.crossfadeDurationSec ?? 3,
+        mixerExpanded: Boolean(row.mixerExpanded),
         createdAt: row.createdAt,
         updatedAt: row.updatedAt,
       };
@@ -35,6 +41,12 @@ export class SettingsRepository {
       masterVolume: 80,
       karaokeVolume: 100,
       ambientVolume: 30,
+      karaokeMuted: false,
+      ambientMuted: false,
+      masterMuted: false,
+      crossfadeEnabled: true,
+      crossfadeDurationSec: 3,
+      mixerExpanded: false,
       createdAt: now,
       updatedAt: now,
     };
@@ -50,6 +62,12 @@ export class SettingsRepository {
         masterVolume: defaultSettings.masterVolume,
         karaokeVolume: defaultSettings.karaokeVolume,
         ambientVolume: defaultSettings.ambientVolume,
+        karaokeMuted: defaultSettings.karaokeMuted,
+        ambientMuted: defaultSettings.ambientMuted,
+        masterMuted: defaultSettings.masterMuted,
+        crossfadeEnabled: defaultSettings.crossfadeEnabled,
+        crossfadeDurationSec: defaultSettings.crossfadeDurationSec,
+        mixerExpanded: defaultSettings.mixerExpanded,
         createdAt: defaultSettings.createdAt,
         updatedAt: defaultSettings.updatedAt,
       })
@@ -75,6 +93,13 @@ export class SettingsRepository {
     if (updates.masterVolume !== undefined) patch.masterVolume = updates.masterVolume;
     if (updates.karaokeVolume !== undefined) patch.karaokeVolume = updates.karaokeVolume;
     if (updates.ambientVolume !== undefined) patch.ambientVolume = updates.ambientVolume;
+    if (updates.karaokeMuted !== undefined) patch.karaokeMuted = updates.karaokeMuted;
+    if (updates.ambientMuted !== undefined) patch.ambientMuted = updates.ambientMuted;
+    if (updates.masterMuted !== undefined) patch.masterMuted = updates.masterMuted;
+    if (updates.crossfadeEnabled !== undefined) patch.crossfadeEnabled = updates.crossfadeEnabled;
+    if (updates.crossfadeDurationSec !== undefined)
+      patch.crossfadeDurationSec = updates.crossfadeDurationSec;
+    if (updates.mixerExpanded !== undefined) patch.mixerExpanded = updates.mixerExpanded;
 
     this.db.update(settingsTable).set(patch).where(eq(settingsTable.id, current.id)).run();
 

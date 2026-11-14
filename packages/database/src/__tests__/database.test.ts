@@ -46,14 +46,16 @@ describe('Capa de Base de Datos SQLite y Migraciones', () => {
 
   it('debe ser idempotente: no aplicar migraciones duplicadas', () => {
     const firstRun = runMigrations(sqlite);
-    expect(firstRun.applied.length).toBe(1);
+    expect(firstRun.applied).toContain('0001_initial_schema');
+    expect(firstRun.applied).toContain('0002_pro_studio_mixer_settings');
 
     const secondRun = runMigrations(sqlite);
     expect(secondRun.applied.length).toBe(0);
     expect(secondRun.alreadyApplied).toContain('0001_initial_schema');
+    expect(secondRun.alreadyApplied).toContain('0002_pro_studio_mixer_settings');
   });
 
-  it('SettingsRepository debe crear valores por defecto y permitir actualizarlos', () => {
+  it('SettingsRepository debe crear valores por defecto y permitir actualizarlos (incluyendo mezclador DJ y crossfade)', () => {
     runMigrations(sqlite);
     const repo = new SettingsRepository(db);
 
@@ -61,18 +63,33 @@ describe('Capa de Base de Datos SQLite y Migraciones', () => {
     expect(initial.language).toBe('es');
     expect(initial.theme).toBe('dark');
     expect(initial.masterVolume).toBe(80);
+    expect(initial.crossfadeEnabled).toBe(true);
+    expect(initial.crossfadeDurationSec).toBe(3);
+    expect(initial.mixerExpanded).toBe(false);
 
     const updated = repo.updateSettings({
       masterVolume: 95,
       language: 'en',
+      karaokeMuted: true,
+      crossfadeEnabled: false,
+      crossfadeDurationSec: 5,
+      mixerExpanded: true,
     });
 
     expect(updated.masterVolume).toBe(95);
     expect(updated.language).toBe('en');
+    expect(updated.karaokeMuted).toBe(true);
+    expect(updated.crossfadeEnabled).toBe(false);
+    expect(updated.crossfadeDurationSec).toBe(5);
+    expect(updated.mixerExpanded).toBe(true);
 
     const reloaded = repo.getOrCreateSettings();
     expect(reloaded.masterVolume).toBe(95);
     expect(reloaded.language).toBe('en');
+    expect(reloaded.karaokeMuted).toBe(true);
+    expect(reloaded.crossfadeEnabled).toBe(false);
+    expect(reloaded.crossfadeDurationSec).toBe(5);
+    expect(reloaded.mixerExpanded).toBe(true);
   });
 
   it('SessionRepository debe abrir y cerrar sesiones de karaoke', () => {

@@ -10,6 +10,12 @@ export const settingsTable = sqliteTable('settings', {
   masterVolume: integer('master_volume').notNull().default(80),
   karaokeVolume: integer('karaoke_volume').notNull().default(100),
   ambientVolume: integer('ambient_volume').notNull().default(30),
+  karaokeMuted: integer('karaoke_muted', { mode: 'boolean' }).notNull().default(false),
+  ambientMuted: integer('ambient_muted', { mode: 'boolean' }).notNull().default(false),
+  masterMuted: integer('master_muted', { mode: 'boolean' }).notNull().default(false),
+  crossfadeEnabled: integer('crossfade_enabled', { mode: 'boolean' }).notNull().default(true),
+  crossfadeDurationSec: integer('crossfade_duration_sec').notNull().default(3),
+  mixerExpanded: integer('mixer_expanded', { mode: 'boolean' }).notNull().default(false),
   createdAt: text('created_at').notNull(),
   updatedAt: text('updated_at').notNull(),
 });

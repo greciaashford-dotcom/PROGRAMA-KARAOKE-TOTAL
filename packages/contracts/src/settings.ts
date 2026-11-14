@@ -9,6 +9,12 @@ export const SettingsSchema = z.object({
   masterVolume: z.number().int().min(0).max(100).default(80),
   karaokeVolume: z.number().int().min(0).max(100).default(100),
   ambientVolume: z.number().int().min(0).max(100).default(30),
+  karaokeMuted: z.boolean().default(false),
+  ambientMuted: z.boolean().default(false),
+  masterMuted: z.boolean().default(false),
+  crossfadeEnabled: z.boolean().default(true),
+  crossfadeDurationSec: z.number().int().min(1).max(5).default(3),
+  mixerExpanded: z.boolean().default(false),
   createdAt: z.string(),
   updatedAt: z.string(),
 });
