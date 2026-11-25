@@ -15,6 +15,7 @@ import { MediaFolderWatcher } from '@karaoke/media-indexer';
 import { Database as DatabaseInstance } from 'better-sqlite3';
 import { registerAllIpcHandlers } from './ipc/index.js';
 import { registerMediaProtocol } from './protocols/media-protocol.js';
+import { VolumesStore } from './storage/volumes-store.js';
 import { createOperatorWindow } from './windows/operator-window.js';
 import { setupSecurity } from './security.js';
 import { IPC_CHANNELS } from '@karaoke/contracts';
@@ -95,15 +96,16 @@ export class AppLifecycle {
     const singerRepo = new SingerRepository(this.db);
     const queueRepo = new QueueRepository(this.db);
     const playbackRepo = new PlaybackRepository(this.db);
+    const volumesStore = new VolumesStore(userDataPath);
 
-    // Reconciliar activos que pudieron quedar marcados erróneamente por portadas incrustadas
+    // Reconciliar activos que pudieron quedar marcados erróneamente por portadas incrustadas o .dat/.avi
     const healedCount = mediaRepo.healFalseIncompatibleAssets();
     if (healedCount > 0) {
       console.log(`[Recuperación] Se reconciliaron ${healedCount} archivos multimedia a estado AVAILABLE.`);
     }
 
-    // Registrar protocolo seguro 'karaoke-media://'
-    registerMediaProtocol(mediaRepo);
+    // Registrar protocolo seguro 'karaoke-media://' (con soporte .dat/.avi/.cdg y fondo personalizado)
+    registerMediaProtocol(mediaRepo, volumesStore);
 
     // Reconciliación resiliente al iniciar:
     // 1. Cola de sesión: reconciliar estados PLAYING a READY
@@ -144,6 +146,7 @@ export class AppLifecycle {
       singerRepo,
       queueRepo,
       playbackRepo,
+      volumesStore,
       watcher: this.watcher,
       getOperatorWindow: () => this.operatorWindow,
       getPublicWindow: () => this.publicWindow,

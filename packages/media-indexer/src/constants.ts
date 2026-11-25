@@ -1,9 +1,14 @@
 export const ALLOWED_MEDIA_EXTENSIONS = new Set([
+  '.dat',
   '.mp4',
   '.m4v',
   '.webm',
   '.mkv',
   '.mov',
+  '.avi',
+  '.mpg',
+  '.mpeg',
+  '.cdg',
   '.mp3',
   '.m4a',
   '.wav',
@@ -21,6 +26,18 @@ export const SUPPORTED_VIDEO_CODECS = new Set([
   'av01',
   'av1',
   'mpeg4',
+  'mpeg1video',
+  'mpeg2video',
+  'msmpeg4',
+  'msmpeg4v2',
+  'msmpeg4v3',
+  'msvideo1',
+  'cdgraphics',
+  'divx',
+  'xvid',
+  'wmv1',
+  'wmv2',
+  'wmv3',
   'theora',
 ]);
 
@@ -31,6 +48,7 @@ export const SUPPORTED_AUDIO_CODECS = new Set([
   'vorbis',
   'mp3',
   'mp2',
+  'mp1',
   'pcm_s16le',
   'pcm_s16be',
   'pcm_s24le',
@@ -42,6 +60,7 @@ export const SUPPORTED_AUDIO_CODECS = new Set([
   'alac',
   'ac3',
   'eac3',
+  'wmav2',
 ]);
 
 export const FFPROBE_TIMEOUT_MS = 10000; // 10 segundos

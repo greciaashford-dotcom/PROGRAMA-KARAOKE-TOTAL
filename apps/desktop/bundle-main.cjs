@@ -15,7 +15,7 @@ async function build() {
     target: 'node20',
     format: 'cjs',
     sourcemap: true,
-    external: ['electron', 'ffprobe-static'],
+    external: ['electron', 'ffprobe-static', 'ffmpeg-static'],
     alias: {
       'better-sqlite3': path.resolve(__dirname, 'native/package/lib/index.js'),
     },

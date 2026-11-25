@@ -1,17 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { Header } from './components/Header.js';
-import { SettingsModal } from './components/SettingsModal.js';
-import { SessionBanner } from './components/SessionBanner.js';
-import { CatalogPanel } from './components/CatalogPanel.js';
-import { QueuePanel } from './components/QueuePanel.js';
-import { PlayerPanel } from './components/PlayerPanel.js';
-import { AudioMixerDrawer } from './components/AudioMixerDrawer.js';
-import { FolderManagerModal } from './components/FolderManagerModal.js';
-import { EditSongModal } from './components/EditSongModal.js';
-import { SongDetailsModal } from './components/SongDetailsModal.js';
-import { AddToQueueModal } from './components/AddToQueueModal.js';
-import { AddSingerModal } from './components/AddSingerModal.js';
-import { SetupWizardModal } from './components/SetupWizardModal.js';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   SettingsDTO,
   UpdateSettingsDTO,
@@ -22,46 +9,112 @@ import {
   QueueItemDTO,
   SingerDTO,
   QueueStatus,
+  PlaybackStatus,
 } from '@karaoke/contracts';
-import { AlertCircle, CheckCircle2, AlertTriangle } from 'lucide-react';
-import { PlayerPrepareResult } from '../../preload/types.js';
+import {
+  Monitor,
+  LifeBuoy,
+  AlertOctagon,
+  Disc,
+  CheckCircle2,
+  AlertTriangle,
+} from 'lucide-react';
+import {
+  PlayerPrepareResult,
+  VolumesStoreDTO,
+  PublicOverlayStateDTO,
+} from '../../preload/types.js';
+import { AmbientColumn } from './components/AmbientColumn.js';
+import { CenterMonitorColumn } from './components/CenterMonitorColumn.js';
+import { RightControlColumn } from './components/RightControlColumn.js';
+import { BottomQueueAndEffects } from './components/BottomQueueAndEffects.js';
+import { CatalogModal } from './components/CatalogModal.js';
+import { SettingsModal } from './components/SettingsModal.js';
+import { FolderManagerModal } from './components/FolderManagerModal.js';
+import { EditSongModal } from './components/EditSongModal.js';
+import { QuickMessageModal } from './components/QuickMessageModal.js';
+import { EditQueueItemModal } from './components/EditQueueItemModal.js';
+import { SetupWizardModal } from './components/SetupWizardModal.js';
+import {
+  playApplause,
+  playCheers,
+  playLaughter,
+  stopAllEffects,
+} from './utils/sound-effects.js';
+import { cleanDisplayTitle } from './utils/title-cleaner.js';
+
+const DEFAULT_VOLUMES: VolumesStoreDTO = {
+  songs: {},
+  ambientVolume: 35,
+  applauseVolume: 80,
+  karaokeDefaultVolume: 85,
+  masterVolume: 100,
+  autoSaveSongVolume: false,
+  autoKaraokeEnabled: false,
+  autoKaraokeDelaySec: 20,
+  publicBackgroundPath: null,
+};
 
 export const App: React.FC = () => {
   const [settings, setSettings] = useState<SettingsDTO | null>(null);
+  const [volumesStore, setVolumesStore] = useState<VolumesStoreDTO>(DEFAULT_VOLUMES);
   const [currentSession, setCurrentSession] = useState<SessionDTO | null>(null);
   const [folders, setFolders] = useState<MediaFolderDTO[]>([]);
   const [queue, setQueue] = useState<QueueItemDTO[]>([]);
   const [singers, setSingers] = useState<SingerDTO[]>([]);
-  const [previousOrder, setPreviousOrder] = useState<string[] | null>(null);
   const [preparedTrack, setPreparedTrack] = useState<PlayerPrepareResult | null>(null);
+  const [playbackState, setPlaybackState] = useState<PlaybackStatus>('IDLE');
   const [isPublicScreenOpen, setIsPublicScreenOpen] = useState<boolean>(false);
   const [catalogRefreshTrigger, setCatalogRefreshTrigger] = useState<number>(0);
-  const [emergencyStopSignal, setEmergencyStopSignal] = useState<number>(0);
 
-  // Estado en tiempo real del Mezclador Profesional DJ (3 Canales + Crossfade)
-  const [karaokeVolume, setKaraokeVolume] = useState<number>(80);
+  // Audio estrictamente secuencial (CROSSFADE: OFF)
+  const [karaokeVolume, setKaraokeVolume] = useState<number>(85);
   const [ambientVolume, setAmbientVolume] = useState<number>(35);
   const [masterVolume, setMasterVolume] = useState<number>(100);
+  const [applauseVolume, setApplauseVolume] = useState<number>(80);
   const [karaokeMuted, setKaraokeMuted] = useState<boolean>(false);
   const [ambientMuted, setAmbientMuted] = useState<boolean>(false);
   const [masterMuted, setMasterMuted] = useState<boolean>(false);
-  const [crossfadeEnabled, setCrossfadeEnabled] = useState<boolean>(true);
-  const [crossfadeDurationSec, setCrossfadeDurationSec] = useState<number>(3);
-  const [mixerExpanded, setMixerExpanded] = useState<boolean>(false);
-  const [isCrossfading, setIsCrossfading] = useState<boolean>(false);
+  const [pitchSemitones, setPitchSemitones] = useState<number>(0);
+  const [playbackSpeed, setPlaybackSpeed] = useState<number>(1);
 
-  const persistTimerRef = useRef<number | null>(null);
+  // Señales de coordinación secuencial (MP3 <-> Aplausos <-> Karaoke)
+  const [ambientForceStopSignal, setAmbientForceStopSignal] = useState<number>(0);
+  const [ambientAutoStartSignal, setAmbientAutoStartSignal] = useState<number>(0);
+  const [isApplauseActive, setIsApplauseActive] = useState<boolean>(false);
+  const [isAnyEffectActive, setIsAnyEffectActive] = useState<boolean>(false);
+
+  // Auto Karaoke (SOLO COLA) + Cuenta regresiva
+  const [autoKaraokeEnabled, setAutoKaraokeEnabled] = useState<boolean>(false);
+  const [autoKaraokeDelaySec, setAutoKaraokeDelaySec] = useState<number>(20);
+  const [countdownRemainingSec, setCountdownRemainingSec] = useState<number | null>(null);
+  const countdownTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const queueRef = useRef<QueueItemDTO[]>([]);
+  const autoKaraokeEnabledRef = useRef<boolean>(false);
+  const autoKaraokeDelayRef = useRef<number>(20);
+  const volumesStoreRef = useRef<VolumesStoreDTO>(DEFAULT_VOLUMES);
+
+  // Estado compartido con Pantalla Pública
+  const [publicOverlay, setPublicOverlay] = useState<PublicOverlayStateDTO>({
+    mode: 'IDLE',
+    countdownSec: null,
+    singerName: null,
+    songTitle: null,
+    quickMessage: null,
+    hasCustomBackground: false,
+    backgroundVersion: 0,
+  });
 
   // Modales
+  const [isCatalogModalOpen, setIsCatalogModalOpen] = useState<boolean>(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
   const [isFolderManagerOpen, setIsFolderManagerOpen] = useState<boolean>(false);
+  const [isQuickMessageOpen, setIsQuickMessageOpen] = useState<boolean>(false);
   const [isWizardOpen, setIsWizardOpen] = useState<boolean>(false);
   const [editingSong, setEditingSong] = useState<SongDTO | null>(null);
-  const [detailsSong, setDetailsSong] = useState<SongDTO | null>(null);
-  const [addingToQueueSong, setAddingToQueueSong] = useState<SongDTO | null>(null);
-  const [isAddSingerOpen, setIsAddSingerOpen] = useState<boolean>(false);
+  const [editingQueueItem, setEditingQueueItem] = useState<QueueItemDTO | null>(null);
 
-  // Escaneo en vivo
+  // Escaneo + Reloj + Avisos
   const [scanProgress, setScanProgress] = useState<{
     folderId: string;
     discovered: number;
@@ -70,38 +123,65 @@ export const App: React.FC = () => {
     status: string;
     currentFile?: string;
   } | null>(null);
-
   const [loading, setLoading] = useState<boolean>(true);
-  const [notification, setNotification] = useState<string>('Consola lista para reproducir.');
-  const [toast, setToast] = useState<{ text: string; type: 'info' | 'error' } | null>(null);
-
-  const showNotice = (msg: string, type: 'info' | 'error' = 'info') => {
-    setNotification(msg);
-    setToast({ text: msg, type });
-  };
+  const [clockText, setClockText] = useState<string>('');
+  const [notification, setNotification] = useState<{ text: string; type: 'info' | 'error' }>({
+    text: 'Katakana Karaoke listo para operar.',
+    type: 'info',
+  });
 
   useEffect(() => {
-    if (!toast) return;
-    const t = setTimeout(() => setToast(null), 4000);
-    return () => clearTimeout(t);
-  }, [toast]);
+    queueRef.current = queue;
+  }, [queue]);
 
-  const persistSettingsDebounced = (updates: UpdateSettingsDTO) => {
-    if (!window.karaokeAPI) return;
-    if (persistTimerRef.current) {
-      window.clearTimeout(persistTimerRef.current);
+  useEffect(() => {
+    autoKaraokeEnabledRef.current = autoKaraokeEnabled;
+  }, [autoKaraokeEnabled]);
+
+  useEffect(() => {
+    autoKaraokeDelayRef.current = autoKaraokeDelaySec;
+  }, [autoKaraokeDelaySec]);
+
+  useEffect(() => {
+    volumesStoreRef.current = volumesStore;
+  }, [volumesStore]);
+
+  const showNotice = useCallback((text: string, type: 'info' | 'error' = 'info') => {
+    setNotification({ text, type });
+  }, []);
+
+  // Reloj en vivo
+  useEffect(() => {
+    const tick = () => {
+      setClockText(
+        new Date().toLocaleTimeString('es-ES', {
+          hour: '2-digit',
+          minute: '2-digit',
+          second: '2-digit',
+          hour12: false,
+        }),
+      );
+    };
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  const broadcastOverlayState = useCallback((partial: Partial<PublicOverlayStateDTO>) => {
+    setPublicOverlay((prev) => {
+      const next = { ...prev, ...partial };
+      window.karaokeAPI?.broadcastPublicOverlay(next).catch(() => {});
+      return next;
+    });
+  }, []);
+
+  const clearCountdownTimer = useCallback(() => {
+    if (countdownTimerRef.current) {
+      clearInterval(countdownTimerRef.current);
+      countdownTimerRef.current = null;
     }
-    persistTimerRef.current = window.setTimeout(async () => {
-      try {
-        const res = await window.karaokeAPI.updateSettings(updates);
-        if (res.success) {
-          setSettings(res.data);
-        }
-      } catch {
-        // Ignorar errores transitorios de guardado
-      }
-    }, 180);
-  };
+    setCountdownRemainingSec(null);
+  }, []);
 
   const refreshFolders = async () => {
     if (!window.karaokeAPI) return [];
@@ -129,484 +209,717 @@ export const App: React.FC = () => {
     }
   };
 
+  const ensureActiveSession = async (): Promise<SessionDTO | null> => {
+    if (currentSession) return currentSession;
+    if (!window.karaokeAPI) return null;
+    const res = await window.karaokeAPI.openSession('Katakana Karaoke');
+    if (res.success) {
+      setCurrentSession(res.data);
+      await refreshQueue(res.data.id);
+      await refreshSingers(res.data.id);
+      return res.data;
+    }
+    return null;
+  };
+
+  // Inicialización de la app
   useEffect(() => {
-    const initApp = async () => {
+    const init = async () => {
       try {
-        if (window.karaokeAPI) {
-          const settingsRes = await window.karaokeAPI.getSettings();
-          if (settingsRes.success && settingsRes.data) {
-            const s = settingsRes.data;
-            setSettings(s);
-            setKaraokeVolume(s.karaokeVolume ?? 80);
-            setAmbientVolume(s.ambientVolume ?? 35);
-            setMasterVolume(s.masterVolume ?? 100);
-            setKaraokeMuted(Boolean(s.karaokeMuted));
-            setAmbientMuted(Boolean(s.ambientMuted));
-            setMasterMuted(Boolean(s.masterMuted));
-            setCrossfadeEnabled(s.crossfadeEnabled ?? true);
-            setCrossfadeDurationSec(s.crossfadeDurationSec ?? 3);
-            setMixerExpanded(Boolean(s.mixerExpanded));
-          }
+        if (!window.karaokeAPI) return;
 
-          const sessionRes = await window.karaokeAPI.getCurrentSession();
-          if (sessionRes.success && sessionRes.data) {
-            setCurrentSession(sessionRes.data);
-            await refreshQueue(sessionRes.data.id);
-            await refreshSingers(sessionRes.data.id);
-          }
+        const [settingsRes, volumesRes, sessionRes, pubRes] = await Promise.all([
+          window.karaokeAPI.getSettings(),
+          window.karaokeAPI.getVolumes(),
+          window.karaokeAPI.getCurrentSession(),
+          window.karaokeAPI.getPublicWindowStatus(),
+        ]);
 
-          const loadedFolders = await refreshFolders();
-          if (loadedFolders.length === 0) {
-            setIsWizardOpen(true);
-          }
-
-          // Suscribirse a eventos de escaneo
-          window.karaokeAPI.onScanProgress((payload: unknown) => {
-            const p = payload as {
-              folderId: string;
-              discovered: number;
-              processed: number;
-              errors: number;
-              status: string;
-              currentFile?: string;
-            };
-            setScanProgress(p);
-            if (p.status === 'COMPLETED') {
-              showNotice(`Escaneo completado: ${p.processed ?? 0} archivos listos.`);
-              refreshFolders();
-              setCatalogRefreshTrigger((n) => n + 1);
-            } else if (p.status === 'CANCELLED') {
-              showNotice('Escaneo cancelado por el operador.');
-              refreshFolders();
-            }
-          });
-
-          // Suscribirse a actualizaciones de cola (validando siempre que items sea array)
-          window.karaokeAPI.onQueueUpdated((payload) => {
-            if (payload && Array.isArray(payload.items)) {
-              setQueue(payload.items);
-            }
-          });
-
-          // Estado inicial de la pantalla pública
-          const pubStatusRes = await window.karaokeAPI.getPublicWindowStatus();
-          if (pubStatusRes.success && pubStatusRes.data) {
-            setIsPublicScreenOpen(pubStatusRes.data.isOpen);
-          }
-
-          // Escuchar cambios de pantallas en caliente
-          window.karaokeAPI.onMonitorsChanged(() => {
-            showNotice('Monitores actualizados (cambio en caliente detectado).');
-          });
+        if (settingsRes.success && settingsRes.data) {
+          setSettings(settingsRes.data);
+          setKaraokeMuted(Boolean(settingsRes.data.karaokeMuted));
+          setAmbientMuted(Boolean(settingsRes.data.ambientMuted));
+          setMasterMuted(Boolean(settingsRes.data.masterMuted));
         }
+
+        if (volumesRes.success && volumesRes.data) {
+          const v = volumesRes.data;
+          setVolumesStore(v);
+          setKaraokeVolume(v.karaokeDefaultVolume);
+          setAmbientVolume(v.ambientVolume);
+          setMasterVolume(v.masterVolume);
+          setApplauseVolume(v.applauseVolume);
+          setAutoKaraokeEnabled(v.autoKaraokeEnabled);
+          setAutoKaraokeDelaySec(v.autoKaraokeDelaySec);
+          setPublicOverlay((prev) => ({
+            ...prev,
+            hasCustomBackground: Boolean(v.publicBackgroundPath),
+            backgroundVersion: Date.now(),
+          }));
+        }
+
+        if (sessionRes.success && sessionRes.data) {
+          setCurrentSession(sessionRes.data);
+          await refreshQueue(sessionRes.data.id);
+          await refreshSingers(sessionRes.data.id);
+        } else {
+          // Abrir sesión por defecto para que la cola esté lista de inmediato sin fricción
+          const opened = await window.karaokeAPI.openSession('Katakana Karaoke');
+          if (opened.success) {
+            setCurrentSession(opened.data);
+          }
+        }
+
+        if (pubRes.success && pubRes.data) {
+          setIsPublicScreenOpen(pubRes.data.isOpen);
+        }
+
+        const loadedFolders = await refreshFolders();
+        if (loadedFolders.length === 0) {
+          setIsWizardOpen(true);
+        }
+
+        window.karaokeAPI.onScanProgress((payload: unknown) => {
+          const p = payload as {
+            folderId: string;
+            discovered: number;
+            processed: number;
+            errors: number;
+            status: string;
+            currentFile?: string;
+          };
+          setScanProgress(p);
+          if (p.status === 'COMPLETED') {
+            showNotice(`Escaneo completado: ${p.processed ?? 0} canciones listas.`);
+            refreshFolders();
+            setCatalogRefreshTrigger((n) => n + 1);
+          } else if (p.status === 'CANCELLED') {
+            showNotice('Escaneo cancelado.');
+            refreshFolders();
+          }
+        });
+
+        window.karaokeAPI.onQueueUpdated((payload) => {
+          if (payload && Array.isArray(payload.items)) {
+            setQueue(payload.items);
+          }
+        });
+
+        window.karaokeAPI.onMonitorsChanged(() => {
+          showNotice('Monitores actualizados.');
+        });
       } catch (err) {
-        console.error('Error inicializando consola:', err);
+        console.error('Error inicializando consola Katakana:', err);
       } finally {
         setLoading(false);
       }
     };
 
-    initApp();
+    init();
+    return () => {
+      clearCountdownTimer();
+      stopAllEffects();
+    };
+  }, [clearCountdownTimer, showNotice]);
+
+  // Obtener siguiente turno pendiente EXCLUSIVAMENTE de la Cola (Activos)
+  const getNextPendingQueueItem = useCallback((items: QueueItemDTO[], excludeId?: string | null) => {
+    return (
+      items.find(
+        (i) =>
+          i.id !== excludeId &&
+          !['COMPLETED', 'CANCELLED', 'SKIPPED', 'FAILED', 'PLAYING'].includes(i.status),
+      ) || null
+    );
   }, []);
 
-  const handleSaveSettings = async (updates: UpdateSettingsDTO) => {
-    if (!window.karaokeAPI) return;
-    const res = await window.karaokeAPI.updateSettings(updates);
-    if (res.success && res.data) {
-      const s = res.data;
-      setSettings(s);
-      if (updates.karaokeVolume !== undefined) setKaraokeVolume(s.karaokeVolume);
-      if (updates.ambientVolume !== undefined) setAmbientVolume(s.ambientVolume);
-      if (updates.masterVolume !== undefined) setMasterVolume(s.masterVolume);
-      if (updates.karaokeMuted !== undefined) setKaraokeMuted(s.karaokeMuted);
-      if (updates.ambientMuted !== undefined) setAmbientMuted(s.ambientMuted);
-      if (updates.masterMuted !== undefined) setMasterMuted(s.masterMuted);
-      if (updates.crossfadeEnabled !== undefined) setCrossfadeEnabled(s.crossfadeEnabled);
-      if (updates.crossfadeDurationSec !== undefined) setCrossfadeDurationSec(s.crossfadeDurationSec);
-      if (updates.mixerExpanded !== undefined) setMixerExpanded(s.mixerExpanded);
-      showNotice('Configuración guardada en SQLite.');
+  const nextQueuedItem = getNextPendingQueueItem(queue, preparedTrack?.queueItemId);
+
+  // Cargar volumen memorizado de una pista si existe en volumes.json
+  const applyVolumeForTrack = useCallback((mediaAssetId: string) => {
+    const store = volumesStoreRef.current;
+    const savedVol = store.songs[mediaAssetId];
+    if (savedVol !== undefined) {
+      setKaraokeVolume(savedVol);
+      return savedVol;
     }
-  };
+    setKaraokeVolume(store.karaokeDefaultVolume);
+    return store.karaokeDefaultVolume;
+  }, []);
 
-  // Handlers del Mezclador Profesional DJ
-  const handleKaraokeVolumeChange = (vol: number) => {
-    setKaraokeVolume(vol);
-    if (karaokeMuted && vol > 0) {
-      setKaraokeMuted(false);
-      persistSettingsDebounced({ karaokeVolume: vol, karaokeMuted: false });
-    } else {
-      persistSettingsDebounced({ karaokeVolume: vol });
+  // Lanzar un turno específico de la Cola (AUDIO ESTRICTAMENTE SECUENCIAL: para MP3 y efectos antes de arrancar Karaoke)
+  const handleLaunchQueueItem = useCallback(
+    async (item: QueueItemDTO) => {
+      if (!window.karaokeAPI) return;
+      clearCountdownTimer();
+
+      // 1. Detener por completo MP3 de ambiente y cualquier efecto (SIN crossfade / SIN solapamiento)
+      stopAllEffects();
+      setIsApplauseActive(false);
+      setIsAnyEffectActive(false);
+      setAmbientForceStopSignal((n) => n + 1);
+
+      const res = await window.karaokeAPI.preparePlayer({
+        sessionId: item.sessionId,
+        queueItemId: item.id,
+      });
+
+      if (res.success) {
+        const appliedVol = applyVolumeForTrack(res.data.mediaAssetId);
+        setPreparedTrack(res.data);
+        setPitchSemitones(res.data.keyShift || 0);
+        setPlaybackSpeed(1);
+        setPlaybackState('PLAYING');
+
+        broadcastOverlayState({
+          mode: 'IDLE',
+          countdownSec: null,
+          singerName: res.data.singerName,
+          songTitle: cleanDisplayTitle(res.data.title),
+        });
+
+        await window.karaokeAPI.sendPlayerCommand({ command: 'PLAY' });
+        showNotice(
+          `En escenario: ${res.data.singerName} — ${cleanDisplayTitle(res.data.title)} (Vol: ${appliedVol}%, Tono: ${res.data.keyShift >= 0 ? `+${res.data.keyShift}` : res.data.keyShift})`,
+        );
+        await refreshQueue(item.sessionId);
+      } else {
+        showNotice(res.error.message, 'error');
+      }
+    },
+    [applyVolumeForTrack, broadcastOverlayState, clearCountdownTimer, showNotice],
+  );
+
+  // Iniciar cuenta regresiva de Auto Karaoke (SOLO COLA; jamás del catálogo)
+  const startAutoKaraokeCountdown = useCallback(
+    (targetItem: QueueItemDTO) => {
+      clearCountdownTimer();
+      const delay = autoKaraokeDelayRef.current;
+
+      if (delay <= 0) {
+        handleLaunchQueueItem(targetItem);
+        return;
+      }
+
+      let remaining = delay;
+      setCountdownRemainingSec(remaining);
+      broadcastOverlayState({
+        mode: 'COUNTDOWN',
+        countdownSec: remaining,
+        singerName: targetItem.singer?.displayName || 'Cantante',
+        songTitle: cleanDisplayTitle(targetItem.song?.title),
+      });
+
+      countdownTimerRef.current = setInterval(() => {
+        remaining -= 1;
+        if (remaining <= 0) {
+          clearCountdownTimer();
+          // Verificar que el turno siga activo en la cola antes de lanzarlo
+          const latestNext = getNextPendingQueueItem(queueRef.current);
+          if (latestNext && autoKaraokeEnabledRef.current) {
+            handleLaunchQueueItem(latestNext);
+          } else {
+            broadcastOverlayState({ mode: 'IDLE', countdownSec: null });
+          }
+        } else {
+          setCountdownRemainingSec(remaining);
+          broadcastOverlayState({
+            mode: 'COUNTDOWN',
+            countdownSec: remaining,
+            singerName: targetItem.singer?.displayName || 'Cantante',
+            songTitle: cleanDisplayTitle(targetItem.song?.title),
+          });
+        }
+      }, 1000);
+    },
+    [broadcastOverlayState, clearCountdownTimer, getNextPendingQueueItem, handleLaunchQueueItem],
+  );
+
+  // Si Auto Karaoke está ON, no hay karaoke ni aplausos sonando, no hay countdown corriendo,
+  // y acaba de entrar un turno nuevo a la cola -> iniciar cuenta regresiva automáticamente
+  useEffect(() => {
+    if (
+      autoKaraokeEnabled &&
+      playbackState !== 'PLAYING' &&
+      playbackState !== 'PAUSED' &&
+      !isApplauseActive &&
+      countdownRemainingSec === null &&
+      nextQueuedItem
+    ) {
+      startAutoKaraokeCountdown(nextQueuedItem);
     }
-  };
+  }, [
+    autoKaraokeEnabled,
+    playbackState,
+    isApplauseActive,
+    countdownRemainingSec,
+    nextQueuedItem,
+    startAutoKaraokeCountdown,
+  ]);
 
-  const handleAmbientVolumeChange = (vol: number) => {
-    setAmbientVolume(vol);
-    if (ambientMuted && vol > 0) {
-      setAmbientMuted(false);
-      persistSettingsDebounced({ ambientVolume: vol, ambientMuted: false });
-    } else {
-      persistSettingsDebounced({ ambientVolume: vol });
-    }
-  };
+  // Al terminar un Karaoke de forma natural:
+  // 1) Detener Karaoke por completo -> 2) Reproducir Aplausos SOLO -> 3) Detener Aplausos -> 4) Iniciar MP3 de golpe + Cuenta regresiva si hay Cola y Auto Karaoke ON
+  const handleNativeTrackEnded = useCallback(
+    async (finishedTrack: PlayerPrepareResult) => {
+      if (!window.karaokeAPI) return;
+      const finishedTitle = cleanDisplayTitle(finishedTrack.title);
+      const finishedSinger = finishedTrack.singerName;
 
-  const handleMasterVolumeChange = (vol: number) => {
-    setMasterVolume(vol);
-    if (masterMuted && vol > 0) {
-      setMasterMuted(false);
-      persistSettingsDebounced({ masterVolume: vol, masterMuted: false });
-    } else {
-      persistSettingsDebounced({ masterVolume: vol });
-    }
-  };
+      // 1) Detener Karaoke por completo
+      await window.karaokeAPI.reportPlayerEnded(finishedTrack.queueItemId);
+      setPreparedTrack(null);
+      setPlaybackState('ENDED');
 
-  const handleToggleKaraokeMute = () => {
-    const next = !karaokeMuted;
-    setKaraokeMuted(next);
-    window.karaokeAPI?.updateSettings({ karaokeMuted: next });
-  };
+      if (currentSession) {
+        await refreshQueue(currentSession.id);
+      }
 
-  const handleToggleAmbientMute = () => {
-    const next = !ambientMuted;
-    setAmbientMuted(next);
-    window.karaokeAPI?.updateSettings({ ambientMuted: next });
-  };
+      // 2) Reproducir Aplausos SOLO a su volumen memorizado (sin MP3 superpuesto)
+      const effApplause = masterMuted
+        ? 0
+        : Math.max(0, Math.min(1, (applauseVolume / 100) * (masterVolume / 100)));
 
-  const handleToggleMasterMute = () => {
-    const next = !masterMuted;
-    setMasterMuted(next);
-    window.karaokeAPI?.updateSettings({ masterMuted: next });
-  };
+      setIsApplauseActive(true);
+      setIsAnyEffectActive(true);
+      showNotice(`👏 ¡Aplausos para ${finishedSinger} — ${finishedTitle}!`);
 
-  const handleToggleCrossfade = (next?: boolean) => {
-    const val = typeof next === 'boolean' ? next : !crossfadeEnabled;
-    setCrossfadeEnabled(val);
-    window.karaokeAPI?.updateSettings({ crossfadeEnabled: val });
-  };
+      playApplause(6000, effApplause, () => {
+        // 3) Aplausos terminaron por completo -> 4) Iniciar Música de Ambiente MP3 de golpe
+        setIsApplauseActive(false);
+        setIsAnyEffectActive(false);
+        setAmbientAutoStartSignal((n) => n + 1);
 
-  const handleCrossfadeDurationChange = (sec: number) => {
-    setCrossfadeDurationSec(sec);
-    window.karaokeAPI?.updateSettings({ crossfadeDurationSec: sec });
-  };
+        // Si Auto Karaoke está ON y hay turnos en la Cola (NUNCA del catálogo), iniciar cuenta regresiva
+        const nextFromQueue = getNextPendingQueueItem(queueRef.current);
+        if (autoKaraokeEnabledRef.current && nextFromQueue) {
+          startAutoKaraokeCountdown(nextFromQueue);
+        } else {
+          broadcastOverlayState({
+            mode: 'IDLE',
+            countdownSec: null,
+            singerName: nextFromQueue?.singer?.displayName || null,
+            songTitle: nextFromQueue ? cleanDisplayTitle(nextFromQueue.song?.title) : null,
+          });
+        }
+      });
+    },
+    [
+      applauseVolume,
+      broadcastOverlayState,
+      currentSession,
+      getNextPendingQueueItem,
+      masterMuted,
+      masterVolume,
+      showNotice,
+      startAutoKaraokeCountdown,
+    ],
+  );
 
-  const handleToggleMixerExpanded = (next?: boolean) => {
-    const val = typeof next === 'boolean' ? next : !mixerExpanded;
-    setMixerExpanded(val);
-    window.karaokeAPI?.updateSettings({ mixerExpanded: val });
-  };
-
-  const handleOpenSession = async (name: string) => {
-    if (!window.karaokeAPI) return;
-    const res = await window.karaokeAPI.openSession(name);
-    if (res.success) {
-      setCurrentSession(res.data);
-      showNotice(`Sesión "${res.data.name}" abierta.`);
-      await refreshQueue(res.data.id);
-      await refreshSingers(res.data.id);
-    }
-  };
-
-  const handlePauseSession = async (sessionId: string) => {
-    if (!window.karaokeAPI) return;
-    const res = await window.karaokeAPI.pauseSession(sessionId);
-    if (res.success) {
-      setCurrentSession(res.data);
-      showNotice(`Sesión "${res.data.name}" en pausa.`);
-    }
-  };
-
-  const handleResumeSession = async (sessionId: string) => {
-    if (!window.karaokeAPI) return;
-    const res = await window.karaokeAPI.resumeSession(sessionId);
-    if (res.success) {
-      setCurrentSession(res.data);
-      showNotice(`Sesión "${res.data.name}" reanudada.`);
-    }
-  };
-
-  const handleCloseSession = async (sessionId: string) => {
-    if (!window.karaokeAPI) return;
-    const res = await window.karaokeAPI.closeSession(sessionId);
-    if (res.success) {
-      setCurrentSession(null);
-      setQueue([]);
-      setSingers([]);
-      showNotice('Sesión finalizada.');
-    }
-  };
-
-  const handleSelectFolder = async () => {
-    if (!window.karaokeAPI) return;
-    const res = await window.karaokeAPI.selectFolder();
-    if (res.success && res.data) {
-      const folder = res.data;
-      showNotice(`Carpeta "${folder.displayName}" autorizada. Escaneando...`);
-      await refreshFolders();
-      await window.karaokeAPI.scanFolder(folder.id);
-    }
-  };
-
-  const handleScanFolder = async (folderId: string) => {
-    if (!window.karaokeAPI) return;
-    const res = await window.karaokeAPI.scanFolder(folderId);
-    if (res.success) {
-      showNotice('Escaneo iniciado en segundo plano...');
-      await refreshFolders();
-    }
-  };
-
-  const handleCancelScan = async (folderId: string) => {
-    if (!window.karaokeAPI) return;
-    await window.karaokeAPI.cancelScan(folderId);
-    showNotice('Cancelando escaneo...');
-    await refreshFolders();
-  };
-
-  const handleToggleFolder = async (folderId: string, enabled: boolean) => {
-    if (!window.karaokeAPI) return;
-    const res = await window.karaokeAPI.toggleFolder(folderId, enabled);
-    if (res.success) {
-      showNotice(
-        enabled
-          ? `Carpeta "${res.data.displayName}" habilitada en el catálogo.`
-          : `Carpeta "${res.data.displayName}" ocultada temporalmente.`,
-      );
-      await refreshFolders();
-      setCatalogRefreshTrigger((n) => n + 1);
-    }
-  };
-
-  const handleRemoveFolder = async (folderId: string) => {
-    if (!window.karaokeAPI) return;
-    const res = await window.karaokeAPI.removeFolder(folderId);
-    if (res.success) {
-      showNotice('Carpeta desautorizada.');
-      await refreshFolders();
-      setCatalogRefreshTrigger((n) => n + 1);
-    }
-  };
-
-  const handleSaveSongMetadata = async (updates: UpdateSongDTO) => {
-    if (!window.karaokeAPI) return;
-    const res = await window.karaokeAPI.updateSong(updates);
-    if (res.success) {
-      showNotice(`Metadatos actualizados: "${updates.artist} — ${updates.title}".`);
-      setCatalogRefreshTrigger((n) => n + 1);
-    }
-  };
-
-  const handleLocateInExplorer = async (mediaAssetId: string) => {
-    if (!window.karaokeAPI) return;
-    await window.karaokeAPI.locateInExplorer(mediaAssetId);
-  };
-
-  const handleReanalyze = async (mediaAssetId: string) => {
-    if (!window.karaokeAPI) return;
-    await window.karaokeAPI.reanalyzeAsset(mediaAssetId);
-    showNotice('Archivo reanalizado con ffprobe.');
-    setCatalogRefreshTrigger((n) => n + 1);
-    if (detailsSong && detailsSong.asset?.id === mediaAssetId) {
-      setDetailsSong(null);
-    }
-  };
-
-  // Reproducción directa en 1 clic desde el Catálogo
+  // Reproducción directa desde el Catálogo (Modal)
   const handlePlayNowFromCatalog = async (song: SongDTO) => {
     if (!window.karaokeAPI) return;
+    clearCountdownTimer();
+    stopAllEffects();
+    setIsApplauseActive(false);
+    setIsAnyEffectActive(false);
+    setAmbientForceStopSignal((n) => n + 1);
+
     const res = await window.karaokeAPI.previewAsset({
       mediaAssetId: song.mediaAssetId,
       sessionId: currentSession?.id ?? null,
     });
 
     if (res.success) {
+      applyVolumeForTrack(res.data.mediaAssetId);
       setPreparedTrack(res.data);
+      setPitchSemitones(0);
+      setPlaybackSpeed(1);
+      setPlaybackState('PLAYING');
+      broadcastOverlayState({
+        mode: 'IDLE',
+        countdownSec: null,
+        singerName: 'Katakana Karaoke',
+        songTitle: cleanDisplayTitle(res.data.title),
+      });
       await window.karaokeAPI.sendPlayerCommand({ command: 'PLAY' });
-      showNotice(`Reproduciendo ahora: ${res.data.title} — ${res.data.artist}`);
+      showNotice(`Reproduciendo: ${cleanDisplayTitle(res.data.title)}`);
     } else {
       showNotice(res.error.message, 'error');
-      setCatalogRefreshTrigger((n) => n + 1);
     }
   };
 
-  // Cantantes
-  const handleCreateSinger = async (
-    displayName: string,
-    tableOrLocation?: string,
-    notes?: string,
-  ): Promise<SingerDTO | null> => {
-    if (!window.karaokeAPI || !currentSession) return null;
-    const res = await window.karaokeAPI.createSinger({
-      sessionId: currentSession.id,
-      displayName,
-      tableOrLocation,
-      notes,
-    });
+  // Botón "Lanzar / Iniciar" central
+  const handleLaunchNextOrPlay = useCallback(async () => {
+    if (nextQueuedItem && (!preparedTrack || playbackState === 'IDLE' || playbackState === 'ENDED' || playbackState === 'STOPPED')) {
+      await handleLaunchQueueItem(nextQueuedItem);
+      return;
+    }
+    if (preparedTrack && playbackState !== 'PLAYING') {
+      clearCountdownTimer();
+      stopAllEffects();
+      setIsApplauseActive(false);
+      setIsAnyEffectActive(false);
+      setAmbientForceStopSignal((n) => n + 1);
+      setPlaybackState('PLAYING');
+      await window.karaokeAPI?.sendPlayerCommand({ command: 'PLAY' });
+      return;
+    }
+    if (nextQueuedItem) {
+      await handleLaunchQueueItem(nextQueuedItem);
+      return;
+    }
+    showNotice('No hay turnos en la Cola. Abre el Catálogo (F2) para agregar una canción.');
+  }, [clearCountdownTimer, handleLaunchQueueItem, nextQueuedItem, playbackState, preparedTrack, showNotice]);
+
+  const handleTogglePlayPause = useCallback(async () => {
+    if (!window.karaokeAPI) return;
+    if (!preparedTrack) {
+      await handleLaunchNextOrPlay();
+      return;
+    }
+    if (playbackState === 'PLAYING') {
+      setPlaybackState('PAUSED');
+      await window.karaokeAPI.sendPlayerCommand({ command: 'PAUSE' });
+      showNotice('Karaoke en pausa.');
+    } else {
+      stopAllEffects();
+      setIsApplauseActive(false);
+      setIsAnyEffectActive(false);
+      setAmbientForceStopSignal((n) => n + 1);
+      setPlaybackState('PLAYING');
+      await window.karaokeAPI.sendPlayerCommand({ command: 'PLAY' });
+      showNotice(`Reanudado: ${cleanDisplayTitle(preparedTrack.title)}`);
+    }
+    if (currentSession) await refreshQueue(currentSession.id);
+  }, [currentSession, handleLaunchNextOrPlay, playbackState, preparedTrack, showNotice]);
+
+  const handleStopKaraoke = useCallback(async () => {
+    if (!window.karaokeAPI) return;
+    clearCountdownTimer();
+    stopAllEffects();
+    setIsApplauseActive(false);
+    setIsAnyEffectActive(false);
+    setPlaybackState('STOPPED');
+    await window.karaokeAPI.sendPlayerCommand({ command: 'STOP' });
+    showNotice('Reproducción detenida.');
+    if (currentSession) await refreshQueue(currentSession.id);
+  }, [clearCountdownTimer, currentSession, showNotice]);
+
+  const handleEmergencyStop = useCallback(async () => {
+    clearCountdownTimer();
+    stopAllEffects();
+    setIsApplauseActive(false);
+    setIsAnyEffectActive(false);
+    setAmbientForceStopSignal((n) => n + 1);
+    setPlaybackState('STOPPED');
+    setPreparedTrack(null);
+    broadcastOverlayState({ mode: 'IDLE', countdownSec: null });
+    if (window.karaokeAPI) {
+      await window.karaokeAPI.emergencyStop();
+      if (currentSession) await refreshQueue(currentSession.id);
+    }
+    showNotice('¡PARADA DE EMERGENCIA! Todo el audio y vídeo ha sido cortado.', 'error');
+  }, [broadcastOverlayState, clearCountdownTimer, currentSession, showNotice]);
+
+  // Atajos globales: F2 / Ctrl+B -> Abrir Catálogo, Espacio -> Play/Pausa, Esc / F12 -> Parada de Emergencia
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.code === 'F2' || ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'b')) {
+        e.preventDefault();
+        setIsCatalogModalOpen((open) => !open);
+        return;
+      }
+
+      if (e.code === 'F12') {
+        e.preventDefault();
+        handleEmergencyStop();
+        return;
+      }
+
+      if (e.code === 'Escape') {
+        if (isCatalogModalOpen || isSettingsOpen || isFolderManagerOpen || isQuickMessageOpen || editingQueueItem || editingSong) {
+          setIsCatalogModalOpen(false);
+          setIsSettingsOpen(false);
+          setIsFolderManagerOpen(false);
+          setIsQuickMessageOpen(false);
+          setEditingQueueItem(null);
+          setEditingSong(null);
+          return;
+        }
+        e.preventDefault();
+        handleEmergencyStop();
+        return;
+      }
+
+      const tag = document.activeElement?.tagName.toLowerCase();
+      if (tag === 'input' || tag === 'textarea' || tag === 'select') return;
+
+      if (e.code === 'Space' && !isCatalogModalOpen && !isSettingsOpen && !isQuickMessageOpen) {
+        e.preventDefault();
+        handleTogglePlayPause();
+      }
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [
+    editingQueueItem,
+    editingSong,
+    handleEmergencyStop,
+    handleTogglePlayPause,
+    isCatalogModalOpen,
+    isFolderManagerOpen,
+    isQuickMessageOpen,
+    isSettingsOpen,
+  ]);
+
+  // Volúmenes memorizados (volumes.json)
+  const handleKaraokeVolumeChange = (vol: number) => {
+    setKaraokeVolume(vol);
+    if (karaokeMuted && vol > 0) setKaraokeMuted(false);
+    if (preparedTrack && volumesStore.autoSaveSongVolume) {
+      window.karaokeAPI?.saveSongVolume(preparedTrack.mediaAssetId, vol).then((res) => {
+        if (res.success) setVolumesStore(res.data);
+      });
+    }
+  };
+
+  const handleMemorizeCurrentVolume = async () => {
+    if (!preparedTrack || !window.karaokeAPI) return;
+    const res = await window.karaokeAPI.saveSongVolume(preparedTrack.mediaAssetId, karaokeVolume);
     if (res.success) {
-      await refreshSingers(currentSession.id);
-      showNotice(`Cantante "${displayName}" registrado.`);
-      return res.data;
+      setVolumesStore(res.data);
+      showNotice(
+        `Volumen ${karaokeVolume}% memorizado para "${cleanDisplayTitle(preparedTrack.title)}".`,
+      );
     }
-    return null;
   };
 
-  // Cola
-  const handleAddToQueue = async (
-    songId: string,
-    singerId: string,
+  const handleAmbientVolumeChange = (vol: number) => {
+    setAmbientVolume(vol);
+    if (ambientMuted && vol > 0) setAmbientMuted(false);
+    window.karaokeAPI?.saveGlobalVolumes({ ambientVolume: vol }).then((res) => {
+      if (res.success) setVolumesStore(res.data);
+    });
+    window.karaokeAPI?.updateSettings({ ambientVolume: vol, ambientMuted: false });
+  };
+
+  const handleMasterVolumeChange = (vol: number) => {
+    setMasterVolume(vol);
+    if (masterMuted && vol > 0) setMasterMuted(false);
+    window.karaokeAPI?.saveGlobalVolumes({ masterVolume: vol }).then((res) => {
+      if (res.success) setVolumesStore(res.data);
+    });
+    window.karaokeAPI?.updateSettings({ masterVolume: vol, masterMuted: false });
+  };
+
+  const handleApplauseVolumeChange = (vol: number) => {
+    setApplauseVolume(vol);
+    window.karaokeAPI?.saveGlobalVolumes({ applauseVolume: vol }).then((res) => {
+      if (res.success) setVolumesStore(res.data);
+    });
+  };
+
+  const handleToggleAutoKaraoke = (enabled: boolean) => {
+    setAutoKaraokeEnabled(enabled);
+    window.karaokeAPI?.saveGlobalVolumes({ autoKaraokeEnabled: enabled }).then((res) => {
+      if (res.success) setVolumesStore(res.data);
+    });
+    if (!enabled) {
+      clearCountdownTimer();
+      broadcastOverlayState({ mode: 'IDLE', countdownSec: null });
+      showNotice('Auto Karaoke desactivado.');
+    } else {
+      showNotice('Auto Karaoke activado (solo canciones de la Cola).');
+    }
+  };
+
+  const handleChangeAutoKaraokeDelay = (sec: number) => {
+    setAutoKaraokeDelaySec(sec);
+    window.karaokeAPI?.saveGlobalVolumes({ autoKaraokeDelaySec: sec }).then((res) => {
+      if (res.success) setVolumesStore(res.data);
+    });
+  };
+
+  // Encolar canción desde el Modal de Catálogo (con Cantante + Tono -6..+6)
+  const handleEnqueueWithSingerAndPitch = async (
+    song: SongDTO,
+    singerName: string,
     keyShift: number,
-    tempoPercent: number,
   ) => {
-    if (!window.karaokeAPI || !currentSession) {
-      showNotice('Abre una sesión primero para añadir canciones a la cola.', 'error');
+    if (!window.karaokeAPI) return;
+    const session = await ensureActiveSession();
+    if (!session) {
+      showNotice('No se pudo abrir sesión para encolar.', 'error');
       return;
     }
 
-    const res = await window.karaokeAPI.addToQueue({
-      sessionId: currentSession.id,
-      songId,
-      singerId,
-      keyShift,
-      tempoPercent,
-    });
-
-    if (res.success) {
-      showNotice(`Canción añadida al turno #${res.data.position}.`);
-      await refreshQueue(currentSession.id);
-    } else {
-      showNotice(res.error.message, 'error');
-    }
-  };
-
-  const handleReorderList = async (orderedIds: string[]) => {
-    if (!window.karaokeAPI || !currentSession) return;
-    const res = await window.karaokeAPI.reorderQueue({
-      sessionId: currentSession.id,
-      orderedItemIds: orderedIds,
-    });
-    if (res.success) {
-      setPreviousOrder(res.data.previousOrder);
-      showNotice('Orden de la cola actualizado.');
-      await refreshQueue(currentSession.id);
-    }
-  };
-
-  const handleMoveItem = async (index: number, direction: 'UP' | 'DOWN') => {
-    if (!window.karaokeAPI || !currentSession) return;
-    const targetIndex = direction === 'UP' ? index - 1 : index + 1;
-    if (targetIndex < 0 || targetIndex >= queue.length) return;
-
-    const newOrder = [...queue];
-    const item = newOrder[index]!;
-    newOrder.splice(index, 1);
-    newOrder.splice(targetIndex, 0, item);
-
-    await handleReorderList(newOrder.map((i) => i.id));
-  };
-
-  const handleUndoReorder = async () => {
-    if (!window.karaokeAPI || !currentSession || !previousOrder) return;
-    const res = await window.karaokeAPI.undoReorder({
-      sessionId: currentSession.id,
-      previousOrderedItemIds: previousOrder,
-    });
-
-    if (res.success) {
-      setPreviousOrder(null);
-      showNotice('Orden anterior restaurado.');
-      await refreshQueue(currentSession.id);
-    }
-  };
-
-  const handleTransitionItem = async (itemId: string, nextStatus: QueueStatus, reason?: string) => {
-    if (!window.karaokeAPI || !currentSession) return;
-    const res = await window.karaokeAPI.transitionQueue({
-      queueItemId: itemId,
-      nextStatus,
-      failureReason: reason,
-    });
-
-    if (res.success) {
-      showNotice(`Turno #${res.data.position} cambiado a ${nextStatus}.`);
-      await refreshQueue(currentSession.id);
-    } else {
-      showNotice(res.error.message, 'error');
-    }
-  };
-
-  const handlePrepareTrack = async (item: QueueItemDTO) => {
-    if (!window.karaokeAPI) return;
-    const res = await window.karaokeAPI.preparePlayer({
-      sessionId: item.sessionId,
-      queueItemId: item.id,
-    });
-    if (res.success) {
-      setPreparedTrack(res.data);
-      showNotice(`Pista cargada y lista: ${res.data.title} (${res.data.singerName})`);
-      if (currentSession) {
-        await refreshQueue(currentSession.id);
-      }
-    } else {
-      showNotice(`Error al preparar pista: ${res.error.message}`, 'error');
-    }
-  };
-
-  const handlePlayQueueItemNow = async (item: QueueItemDTO) => {
-    if (!window.karaokeAPI) return;
-    const res = await window.karaokeAPI.preparePlayer({
-      sessionId: item.sessionId,
-      queueItemId: item.id,
-    });
-    if (res.success) {
-      setPreparedTrack(res.data);
-      await window.karaokeAPI.sendPlayerCommand({ command: 'PLAY' });
-      showNotice(`En directo: ${res.data.title} — Cantante: ${res.data.singerName}`);
-      if (currentSession) {
-        await refreshQueue(currentSession.id);
-      }
-    } else {
-      showNotice(`Error al reproducir pista: ${res.error.message}`, 'error');
-    }
-  };
-
-  const handleSkipTrack = async () => {
-    if (!window.karaokeAPI) return;
-    if (preparedTrack?.queueItemId && currentSession) {
-      try {
-        await window.karaokeAPI.transitionQueue({
-          queueItemId: preparedTrack.queueItemId,
-          nextStatus: 'SKIPPED',
-          failureReason: 'Saltada por el operador desde el reproductor',
-        });
-      } catch {
-        // Ignorar
-      }
-    }
-
-    const safeQueue = Array.isArray(queue) ? queue : [];
-    const nextItem = safeQueue.find(
-      (i) =>
-        i.id !== preparedTrack?.queueItemId &&
-        !['COMPLETED', 'CANCELLED', 'SKIPPED', 'FAILED'].includes(i.status),
+    let singer = singers.find(
+      (s) => s.displayName.trim().toLowerCase() === singerName.trim().toLowerCase(),
     );
 
-    if (nextItem) {
-      await handlePlayQueueItemNow(nextItem);
+    if (!singer) {
+      const created = await window.karaokeAPI.createSinger({
+        sessionId: session.id,
+        displayName: singerName.trim(),
+      });
+      if (!created.success) {
+        showNotice(created.error.message, 'error');
+        return;
+      }
+      singer = created.data;
+      await refreshSingers(session.id);
+    }
+
+    const addRes = await window.karaokeAPI.addToQueue({
+      sessionId: session.id,
+      songId: song.id,
+      singerId: singer.id,
+      keyShift,
+      tempoPercent: 100,
+    });
+
+    if (addRes.success) {
+      showNotice(
+        `Agregado a la Cola (#${addRes.data.position}): ${singer.displayName} — ${cleanDisplayTitle(song.title)} (Tono ${keyShift >= 0 ? `+${keyShift}` : keyShift})`,
+      );
+      await refreshQueue(session.id);
     } else {
-      await window.karaokeAPI.sendPlayerCommand({ command: 'STOP' });
-      setPreparedTrack(null);
-      showNotice('Pista saltada. No hay más turnos pendientes en la cola.');
-      if (currentSession) await refreshQueue(currentSession.id);
+      showNotice(addRes.error.message, 'error');
     }
   };
 
-  const handleEmergencyStop = async () => {
-    setEmergencyStopSignal((s) => s + 1);
-    if (window.karaokeAPI) {
-      await window.karaokeAPI.emergencyStop();
+  // Editar turno en cola (Cantante / Tono)
+  const handleSaveQueueItemEdit = async (
+    queueItemId: string,
+    singerName: string,
+    keyShift: number,
+  ) => {
+    if (!window.karaokeAPI) return;
+    const res = await window.karaokeAPI.updateQueueItem({
+      queueItemId,
+      singerName,
+      keyShift,
+    });
+    if (res.success) {
+      if (preparedTrack?.queueItemId === queueItemId) {
+        setPitchSemitones(keyShift);
+      }
       if (currentSession) {
         await refreshQueue(currentSession.id);
+        await refreshSingers(currentSession.id);
       }
+      showNotice(`Turno actualizado: ${singerName} (Tono ${keyShift >= 0 ? `+${keyShift}` : keyShift})`);
     }
-    showNotice('¡PARADA DE EMERGENCIA ACTIVADA! Vídeo y audio cortados.', 'error');
+  };
+
+  const handleMoveQueueItem = async (index: number, direction: 'UP' | 'DOWN') => {
+    if (!window.karaokeAPI || !currentSession) return;
+    const target = direction === 'UP' ? index - 1 : index + 1;
+    if (target < 0 || target >= queue.length) return;
+    const nextOrder = [...queue];
+    const [moved] = nextOrder.splice(index, 1);
+    if (!moved) return;
+    nextOrder.splice(target, 0, moved);
+    const res = await window.karaokeAPI.reorderQueue({
+      sessionId: currentSession.id,
+      orderedItemIds: nextOrder.map((i) => i.id),
+    });
+    if (res.success) await refreshQueue(currentSession.id);
+  };
+
+  const handleTransitionQueueItem = async (itemId: string, nextStatus: QueueStatus) => {
+    if (!window.karaokeAPI || !currentSession) return;
+    const res = await window.karaokeAPI.transitionQueue({ queueItemId: itemId, nextStatus });
+    if (res.success) {
+      await refreshQueue(currentSession.id);
+    }
+  };
+
+  // Efectos rápidos manuales (respetando volumen memorizado de aplausos)
+  const getEffectGain = () =>
+    masterMuted ? 0 : Math.max(0, Math.min(1, (applauseVolume / 100) * (masterVolume / 100)));
+
+  const triggerManualApplause = () => {
+    setIsAnyEffectActive(true);
+    setIsApplauseActive(true);
+    showNotice('👏 Efecto: Aplausos en sala.');
+    playApplause(6000, getEffectGain(), () => {
+      setIsApplauseActive(false);
+      setIsAnyEffectActive(false);
+    });
+  };
+
+  const triggerManualCheers = () => {
+    setIsAnyEffectActive(true);
+    showNotice('🎉 Efecto: Ovaciones.');
+    playCheers(getEffectGain(), () => setIsAnyEffectActive(false));
+  };
+
+  const triggerManualLaughter = () => {
+    setIsAnyEffectActive(true);
+    showNotice('😂 Efecto: Risas.');
+    playLaughter(getEffectGain(), () => setIsAnyEffectActive(false));
+  };
+
+  // Gestión de carpetas y ajustes
+  const handleSelectFolder = async () => {
+    if (!window.karaokeAPI) return;
+    const res = await window.karaokeAPI.selectFolder();
+    if (res.success && res.data) {
+      showNotice(`Carpeta "${res.data.displayName}" agregada. Indexando...`);
+      await refreshFolders();
+      await window.karaokeAPI.scanFolder(res.data.id);
+    }
+  };
+
+  const handleSaveSettings = async (updates: UpdateSettingsDTO) => {
+    if (!window.karaokeAPI) return;
+    const res = await window.karaokeAPI.updateSettings(updates);
+    if (res.success) {
+      setSettings(res.data);
+      showNotice('Configuración guardada.');
+    }
+  };
+
+  const handleSaveGlobalVolumes = async (updates: Partial<Omit<VolumesStoreDTO, 'songs'>>) => {
+    if (!window.karaokeAPI) return;
+    const res = await window.karaokeAPI.saveGlobalVolumes(updates);
+    if (res.success) {
+      setVolumesStore(res.data);
+      setMasterVolume(res.data.masterVolume);
+      setAmbientVolume(res.data.ambientVolume);
+      setApplauseVolume(res.data.applauseVolume);
+      if (!preparedTrack) setKaraokeVolume(res.data.karaokeDefaultVolume);
+    }
+  };
+
+  const handleSelectPublicBackground = async () => {
+    if (!window.karaokeAPI) return;
+    const res = await window.karaokeAPI.selectPublicBackground();
+    if (res.success) {
+      setVolumesStore(res.data);
+      setPublicOverlay((prev) => ({
+        ...prev,
+        hasCustomBackground: Boolean(res.data.publicBackgroundPath),
+        backgroundVersion: Date.now(),
+      }));
+      showNotice('Imagen de fondo de Pantalla Pública actualizada.');
+    }
+  };
+
+  const handleResetPublicBackground = async () => {
+    if (!window.karaokeAPI) return;
+    const res = await window.karaokeAPI.resetPublicBackground();
+    if (res.success) {
+      setVolumesStore(res.data);
+      setPublicOverlay((prev) => ({
+        ...prev,
+        hasCustomBackground: false,
+        backgroundVersion: Date.now(),
+      }));
+      showNotice('Fondo oficial Katakana Karaoke restaurado.');
+    }
   };
 
   const handleTogglePublicScreen = async () => {
@@ -614,11 +927,12 @@ export const App: React.FC = () => {
     const res = await window.karaokeAPI.togglePublicWindow();
     if (res.success && res.data) {
       setIsPublicScreenOpen(res.data.isOpen);
-      showNotice(
-        res.data.isOpen
-          ? 'Pantalla pública abierta.'
-          : 'Pantalla pública cerrada.',
-      );
+      showNotice(res.data.isOpen ? 'Pantalla Pública abierta.' : 'Pantalla Pública cerrada.');
+      if (res.data.isOpen) {
+        setTimeout(() => {
+          window.karaokeAPI?.broadcastPublicOverlay(publicOverlay).catch(() => {});
+        }, 400);
+      }
     }
   };
 
@@ -627,7 +941,7 @@ export const App: React.FC = () => {
     const res = await window.karaokeAPI.rescuePublicWindow();
     if (res.success) {
       setIsPublicScreenOpen(true);
-      showNotice('Pantalla pública rescatada en el monitor principal del operador.');
+      showNotice('Pantalla Pública rescatada en el monitor principal.');
     }
   };
 
@@ -635,165 +949,297 @@ export const App: React.FC = () => {
     return (
       <div
         style={{
+          height: '100vh',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          height: '100vh',
           backgroundColor: 'var(--bg-app)',
-          color: 'var(--text-secondary)',
+          color: 'var(--ink-piano)',
+          fontSize: '22px',
+          fontWeight: 800,
         }}
       >
-        Iniciando consola de directo...
+        Iniciando Katakana Karaoke...
       </div>
     );
   }
 
+  const currentSongMemVol =
+    preparedTrack && volumesStore.songs[preparedTrack.mediaAssetId] !== undefined
+      ? volumesStore.songs[preparedTrack.mediaAssetId]!
+      : null;
+
+  const isAudioBlockedForAmbient = playbackState === 'PLAYING' || isAnyEffectActive;
+
   return (
-    <div className="app-container">
-      <Header
-        currentSession={currentSession}
-        isPublicScreenOpen={isPublicScreenOpen}
-        onTogglePublicScreen={handleTogglePublicScreen}
-        onRescuePublicScreen={handleRescuePublicScreen}
-        onOpenSettings={() => setIsSettingsOpen(true)}
-        onOpenWizard={() => setIsWizardOpen(true)}
-      />
+    <div className="katakana-app">
+      {/* Barra Superior (Negro Piano 30%) */}
+      <header className="katakana-topbar">
+        <div className="katakana-brand">
+          <Disc size={26} color="#00C2B5" />
+          <span>Katakana Karaoke</span>
+          <span className="katakana-brand-pill">KARAOKE TOTAL</span>
+        </div>
 
-      <div className="session-banner-wrapper">
-        <SessionBanner
-          currentSession={currentSession}
-          onOpenSession={handleOpenSession}
-          onPauseSession={handlePauseSession}
-          onResumeSession={handleResumeSession}
-          onCloseSession={handleCloseSession}
-        />
-      </div>
-
-      <main className="main-grid">
-        {/* Panel 1: Catálogo Local */}
-        <CatalogPanel
-          folders={folders}
-          onOpenFolderManager={() => setIsFolderManagerOpen(true)}
-          onEditSong={(song) => setEditingSong(song)}
-          onViewDetails={(song) => setDetailsSong(song)}
-          onPlayNow={handlePlayNowFromCatalog}
-          onCancelScan={handleCancelScan}
-          refreshTrigger={catalogRefreshTrigger}
-          onAddToQueue={(song) => {
-            if (!currentSession) {
-              showNotice(
-                'Abre una sesión arriba para encolar cantantes, o pulsa "Play" para reproducir el vídeo directamente.',
-                'error',
-              );
-              return;
-            }
-            setAddingToQueueSong(song);
+        {/* Estado operativo en vivo */}
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            fontSize: '15px',
+            fontWeight: 700,
+            color: notification.type === 'error' ? '#fca5a5' : '#e4d7bc',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+            maxWidth: '40vw',
           }}
-          scanProgress={scanProgress}
-        />
+        >
+          {notification.type === 'error' ? (
+            <AlertTriangle size={18} color="#f87171" style={{ flexShrink: 0 }} />
+          ) : (
+            <CheckCircle2 size={18} color="#00C2B5" style={{ flexShrink: 0 }} />
+          )}
+          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{notification.text}</span>
+        </div>
 
-        {/* Panel 2: Cola y Escenario */}
-        <QueuePanel
-          sessionId={currentSession?.id}
-          queue={queue}
-          singers={singers}
-          hasUndo={!!previousOrder}
-          onUndoReorder={handleUndoReorder}
-          onMoveItem={handleMoveItem}
-          onReorderList={handleReorderList}
-          onTransitionItem={handleTransitionItem}
-          onPrepareForPlayback={handlePrepareTrack}
-          onPlayQueueItemNow={handlePlayQueueItemNow}
-          onOpenAddSinger={() => setIsAddSingerOpen(true)}
-        />
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <button
+            type="button"
+            className={`btn btn-compact ${isPublicScreenOpen ? 'btn-surf' : ''}`}
+            onClick={handleTogglePublicScreen}
+            style={{ minHeight: '38px' }}
+          >
+            <Monitor size={18} />
+            {isPublicScreenOpen ? 'Pantalla Pública: ACTIVA' : 'Abrir Pantalla Pública'}
+          </button>
 
-        {/* Panel 3: Monitor de Reproducción y Música de Ambiente */}
-        <PlayerPanel
-          queue={queue}
-          onRefreshQueue={async () => {
-            if (currentSession) await refreshQueue(currentSession.id);
-          }}
-          onNotification={(msg, type) => showNotice(msg, type)}
-          preparedTrack={preparedTrack}
-          onSetPreparedTrack={setPreparedTrack}
-          onSkipTrack={handleSkipTrack}
-          karaokeVolume={karaokeVolume}
+          {isPublicScreenOpen && (
+            <button
+              type="button"
+              className="btn btn-compact"
+              onClick={handleRescuePublicScreen}
+              title="Rescatar Pantalla Pública al monitor principal"
+              style={{ minWidth: '38px', padding: '0 8px' }}
+            >
+              <LifeBuoy size={18} />
+            </button>
+          )}
+
+          <div className="katakana-clock">{clockText}</div>
+
+          <button
+            type="button"
+            className="btn btn-emergency btn-compact"
+            onClick={handleEmergencyStop}
+            title="Parada de emergencia inmediata (Esc / F12)"
+          >
+            <AlertOctagon size={17} />
+            Emergencia
+          </button>
+        </div>
+      </header>
+
+      {/* 3 Columnas Principales */}
+      <main className="katakana-main-grid">
+        {/* COLUMNA IZQUIERDA: MÚSICA DE AMBIENTE (MP3) */}
+        <AmbientColumn
+          blockedByKaraokeOrEffects={isAudioBlockedForAmbient}
+          forceStopSignal={ambientForceStopSignal}
+          autoStartSignal={ambientAutoStartSignal}
           ambientVolume={ambientVolume}
           masterVolume={masterVolume}
-          karaokeMuted={karaokeMuted}
           ambientMuted={ambientMuted}
           masterMuted={masterMuted}
-          crossfadeEnabled={crossfadeEnabled}
-          crossfadeDurationSec={crossfadeDurationSec}
+          refreshTrigger={catalogRefreshTrigger}
           onChangeAmbientVolume={handleAmbientVolumeChange}
-          onToggleAmbientMute={handleToggleAmbientMute}
-          onCrossfadeStateChange={setIsCrossfading}
-          catalogRefreshTrigger={catalogRefreshTrigger}
-          emergencyStopSignal={emergencyStopSignal}
+          onToggleAmbientMute={() => {
+            const next = !ambientMuted;
+            setAmbientMuted(next);
+            window.karaokeAPI?.updateSettings({ ambientMuted: next });
+          }}
+          onNotification={showNotice}
+        />
+
+        {/* COLUMNA CENTRAL (PROTAGONISTA): MONITOR DE KARAOKE Y CONTROLES */}
+        <CenterMonitorColumn
+          preparedTrack={preparedTrack}
+          playbackState={playbackState}
+          onPlaybackStateChange={setPlaybackState}
+          onNativeTrackEnded={handleNativeTrackEnded}
+          onLaunchNextOrPlay={handleLaunchNextOrPlay}
+          onTogglePlayPause={handleTogglePlayPause}
+          onStopKaraoke={handleStopKaraoke}
+          onOpenQuickMessage={() => setIsQuickMessageOpen(true)}
+          karaokeVolume={karaokeVolume}
+          masterVolume={masterVolume}
+          karaokeMuted={karaokeMuted}
+          masterMuted={masterMuted}
+          isVolumeMemorized={currentSongMemVol !== null}
+          memorizedVolumeValue={currentSongMemVol}
+          pitchSemitones={pitchSemitones}
+          playbackSpeed={playbackSpeed}
+          isApplauseActive={isApplauseActive}
+          publicOverlay={publicOverlay}
+          nextQueuedItem={nextQueuedItem}
+          onChangeKaraokeVolume={handleKaraokeVolumeChange}
+          onToggleKaraokeMute={() => {
+            const next = !karaokeMuted;
+            setKaraokeMuted(next);
+            window.karaokeAPI?.updateSettings({ karaokeMuted: next });
+          }}
+          onMemorizeCurrentVolume={handleMemorizeCurrentVolume}
+          onChangePitch={setPitchSemitones}
+          onChangeSpeed={setPlaybackSpeed}
+          onNotification={showNotice}
+        />
+
+        {/* COLUMNA DERECHA: CATÁLOGO MODAL, AUTO KARAOKE, CONFIGURAR Y MEZCLADOR MINIATURA */}
+        <RightControlColumn
+          onOpenCatalogModal={() => setIsCatalogModalOpen(true)}
+          onOpenSettingsModal={() => setIsSettingsOpen(true)}
+          autoKaraokeEnabled={autoKaraokeEnabled}
+          autoKaraokeDelaySec={autoKaraokeDelaySec}
+          countdownRemainingSec={countdownRemainingSec}
+          nextQueuedItem={nextQueuedItem}
+          onToggleAutoKaraoke={handleToggleAutoKaraoke}
+          onChangeAutoKaraokeDelay={handleChangeAutoKaraokeDelay}
+          onStartCountdownNow={async () => {
+            if (nextQueuedItem) await handleLaunchQueueItem(nextQueuedItem);
+          }}
+          onCancelCountdown={() => {
+            clearCountdownTimer();
+            broadcastOverlayState({ mode: 'IDLE', countdownSec: null });
+            showNotice('Cuenta regresiva cancelada.');
+          }}
+          masterVolume={masterVolume}
+          masterMuted={masterMuted}
+          karaokeVolume={karaokeVolume}
+          karaokeMuted={karaokeMuted}
+          ambientVolume={ambientVolume}
+          ambientMuted={ambientMuted}
+          applauseVolume={applauseVolume}
+          isCurrentSongMemorized={currentSongMemVol !== null}
+          currentSongMemorizedVol={currentSongMemVol}
+          memorizedCount={Object.keys(volumesStore.songs).length}
+          onChangeMasterVolume={handleMasterVolumeChange}
+          onToggleMasterMute={() => {
+            const next = !masterMuted;
+            setMasterMuted(next);
+            window.karaokeAPI?.updateSettings({ masterMuted: next });
+          }}
+          onChangeApplauseVolume={handleApplauseVolumeChange}
         />
       </main>
 
-      {/* Mezclador de Audio Profesional DJ Desplegable */}
-      <AudioMixerDrawer
-        expanded={mixerExpanded}
-        onToggleExpanded={handleToggleMixerExpanded}
-        karaokeVolume={karaokeVolume}
-        ambientVolume={ambientVolume}
-        masterVolume={masterVolume}
-        karaokeMuted={karaokeMuted}
-        ambientMuted={ambientMuted}
-        masterMuted={masterMuted}
-        crossfadeEnabled={crossfadeEnabled}
-        crossfadeDurationSec={crossfadeDurationSec}
-        isCrossfading={isCrossfading}
-        onChangeKaraokeVolume={handleKaraokeVolumeChange}
-        onChangeAmbientVolume={handleAmbientVolumeChange}
-        onChangeMasterVolume={handleMasterVolumeChange}
-        onToggleKaraokeMute={handleToggleKaraokeMute}
-        onToggleAmbientMute={handleToggleAmbientMute}
-        onToggleMasterMute={handleToggleMasterMute}
-        onToggleCrossfade={handleToggleCrossfade}
-        onChangeCrossfadeDuration={handleCrossfadeDurationChange}
+      {/* PARTE INFERIOR (ANCHO COMPLETO): COLA DE ESCENARIO Y EFECTOS RÁPIDOS */}
+      <BottomQueueAndEffects
+        queue={queue}
+        memorizedSongs={volumesStore.songs}
+        defaultKaraokeVolume={volumesStore.karaokeDefaultVolume}
+        onLaunchItem={handleLaunchQueueItem}
+        onEditItem={(item) => setEditingQueueItem(item)}
+        onRemoveItem={(item) => handleTransitionQueueItem(item.id, 'CANCELLED')}
+        onMoveItem={handleMoveQueueItem}
+        onRequeueItem={handleTransitionQueueItem}
+        onTriggerApplause={triggerManualApplause}
+        onTriggerCheers={triggerManualCheers}
+        onTriggerLaughter={triggerManualLaughter}
       />
 
-      <footer className="footer-bar">
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          {toast?.type === 'error' ? (
-            <AlertTriangle size={15} color="var(--status-error)" />
-          ) : (
-            <CheckCircle2 size={15} color="var(--status-ready)" />
-          )}
-          <span
-            style={{
-              fontSize: '12px',
-              color: toast?.type === 'error' ? 'var(--status-error)' : 'var(--text-secondary)',
-              fontWeight: toast ? 600 : 400,
-            }}
-          >
-            {notification}
-          </span>
-        </div>
+      {/* MODAL DEL CATÁLOGO LOCAL + SELECTOR DE CANTANTE Y TONO (-6 a +6) */}
+      <CatalogModal
+        isOpen={isCatalogModalOpen}
+        onClose={() => setIsCatalogModalOpen(false)}
+        folders={folders}
+        singers={singers}
+        memorizedSongs={volumesStore.songs}
+        refreshTrigger={catalogRefreshTrigger}
+        scanProgress={scanProgress}
+        onOpenFolderManager={() => setIsFolderManagerOpen(true)}
+        onPlayNow={handlePlayNowFromCatalog}
+        onEnqueueWithSingerAndPitch={handleEnqueueWithSingerAndPitch}
+        onEditSong={(song) => setEditingSong(song)}
+      />
 
-        <button
-          className="btn btn-emergency"
-          onClick={handleEmergencyStop}
-          title="Parada inmediata de sonido y vídeo en directo (Esc / F12)"
-          style={{
-            height: '28px',
-            minHeight: '28px',
-            padding: '0 12px',
-            fontSize: '11px',
-            fontWeight: 800,
-            gap: '6px',
-            borderRadius: '6px',
-            textTransform: 'uppercase',
-          }}
-        >
-          <AlertCircle size={14} />
-          PARADA DE EMERGENCIA (Esc)
-        </button>
-      </footer>
+      {/* MODAL DE MENSAJE RÁPIDO EN PANTALLA PÚBLICA */}
+      <QuickMessageModal
+        isOpen={isQuickMessageOpen}
+        currentMessage={publicOverlay.quickMessage}
+        onClose={() => setIsQuickMessageOpen(false)}
+        onSendMessage={async (msg) => {
+          broadcastOverlayState({ quickMessage: msg });
+          showNotice(msg ? `Mensaje en pantalla: "${msg}"` : 'Mensaje quitado de la Pantalla Pública.');
+        }}
+      />
 
+      {/* MODAL DE EDICIÓN DE TURNO EN COLA */}
+      <EditQueueItemModal
+        item={editingQueueItem}
+        isOpen={!!editingQueueItem}
+        onClose={() => setEditingQueueItem(null)}
+        onSave={handleSaveQueueItemEdit}
+      />
+
+      {/* MODAL DE CONFIGURACIÓN */}
+      {settings && (
+        <SettingsModal
+          settings={settings}
+          volumesStore={volumesStore}
+          isOpen={isSettingsOpen}
+          onClose={() => setIsSettingsOpen(false)}
+          onSave={handleSaveSettings}
+          onSaveGlobalVolumes={handleSaveGlobalVolumes}
+          onSelectPublicBackground={handleSelectPublicBackground}
+          onResetPublicBackground={handleResetPublicBackground}
+          onOpenFolderManager={() => setIsFolderManagerOpen(true)}
+          onRescuePublicScreen={handleRescuePublicScreen}
+        />
+      )}
+
+      {/* MODAL DE GESTIÓN DE CARPETAS */}
+      <FolderManagerModal
+        isOpen={isFolderManagerOpen}
+        folders={folders}
+        onClose={() => setIsFolderManagerOpen(false)}
+        onSelectFolder={handleSelectFolder}
+        onScanFolder={async (folderId) => {
+          await window.karaokeAPI?.scanFolder(folderId);
+          showNotice('Reescaneando carpeta...');
+          await refreshFolders();
+        }}
+        onCancelScan={async (folderId) => {
+          await window.karaokeAPI?.cancelScan(folderId);
+          await refreshFolders();
+        }}
+        onToggleFolder={async (folderId, enabled) => {
+          await window.karaokeAPI?.toggleFolder(folderId, enabled);
+          await refreshFolders();
+          setCatalogRefreshTrigger((n) => n + 1);
+        }}
+        onRemoveFolder={async (folderId) => {
+          await window.karaokeAPI?.removeFolder(folderId);
+          await refreshFolders();
+          setCatalogRefreshTrigger((n) => n + 1);
+        }}
+      />
+
+      {/* MODAL DE EDICIÓN DE METADATOS DE CANCIÓN */}
+      <EditSongModal
+        song={editingSong}
+        isOpen={!!editingSong}
+        onClose={() => setEditingSong(null)}
+        onSave={async (updates: UpdateSongDTO) => {
+          const res = await window.karaokeAPI?.updateSong(updates);
+          if (res?.success) {
+            showNotice(`Canción actualizada: "${updates.title}".`);
+            setCatalogRefreshTrigger((n) => n + 1);
+          }
+        }}
+      />
+
+      {/* ASISTENTE DE CONFIGURACIÓN INICIAL (SOLO SI NO HAY CARPETAS) */}
       <SetupWizardModal
         isOpen={isWizardOpen}
         onClose={() => setIsWizardOpen(false)}
@@ -803,58 +1249,10 @@ export const App: React.FC = () => {
         scanProgress={scanProgress}
         onSaveSettings={handleSaveSettings}
         onSelectFolder={handleSelectFolder}
-        onOpenSession={handleOpenSession}
-      />
-
-      {settings && (
-        <SettingsModal
-          settings={settings}
-          isOpen={isSettingsOpen}
-          onClose={() => setIsSettingsOpen(false)}
-          onSave={handleSaveSettings}
-          onRescuePublicScreen={handleRescuePublicScreen}
-        />
-      )}
-
-      <FolderManagerModal
-        isOpen={isFolderManagerOpen}
-        folders={folders}
-        onClose={() => setIsFolderManagerOpen(false)}
-        onSelectFolder={handleSelectFolder}
-        onScanFolder={handleScanFolder}
-        onCancelScan={handleCancelScan}
-        onToggleFolder={handleToggleFolder}
-        onRemoveFolder={handleRemoveFolder}
-      />
-
-      <EditSongModal
-        song={editingSong}
-        isOpen={!!editingSong}
-        onClose={() => setEditingSong(null)}
-        onSave={handleSaveSongMetadata}
-      />
-
-      <SongDetailsModal
-        song={detailsSong}
-        isOpen={!!detailsSong}
-        onClose={() => setDetailsSong(null)}
-        onLocateInExplorer={handleLocateInExplorer}
-        onReanalyze={handleReanalyze}
-      />
-
-      <AddToQueueModal
-        song={addingToQueueSong}
-        singers={singers}
-        isOpen={!!addingToQueueSong}
-        onClose={() => setAddingToQueueSong(null)}
-        onAddToQueue={handleAddToQueue}
-        onCreateSinger={async (name, table) => handleCreateSinger(name, table)}
-      />
-
-      <AddSingerModal
-        isOpen={isAddSingerOpen}
-        onClose={() => setIsAddSingerOpen(false)}
-        onAddSinger={handleCreateSinger}
+        onOpenSession={async (name) => {
+          const res = await window.karaokeAPI?.openSession(name);
+          if (res?.success) setCurrentSession(res.data);
+        }}
       />
     </div>
   );

@@ -5,6 +5,7 @@ import type {
   CatalogQuery,
   UpdateSongDTO,
   AddToQueueDTO,
+  UpdateQueueItemDTO,
   ReorderQueueDTO,
   UndoReorderDTO,
   QueueTransitionDTO,
@@ -15,12 +16,19 @@ import type {
   AssignDisplaysDTO,
   DisplayInfo,
 } from '@karaoke/contracts';
-import type { KaraokeAPI } from './types.js';
+import type { KaraokeAPI, PublicOverlayStateDTO, VolumesStoreDTO } from './types.js';
 
 // Constantes de canales IPC autocontenidas para compatibilidad estricta con sandbox: true en Electron
 const IPC_CHANNELS: typeof IpcChannelsType = {
   SETTINGS_GET: 'settings:get',
   SETTINGS_UPDATE: 'settings:update',
+
+  VOLUMES_GET_ALL: 'volumes:getAll',
+  VOLUMES_SAVE_SONG: 'volumes:saveSong',
+  VOLUMES_SAVE_GLOBAL: 'volumes:saveGlobal',
+  PUBLIC_SELECT_BACKGROUND: 'public:selectBackground',
+  PUBLIC_RESET_BACKGROUND: 'public:resetBackground',
+  PUBLIC_BROADCAST_OVERLAY: 'public:broadcastOverlay',
 
   LIBRARY_SELECT_FOLDER: 'library:selectFolder',
   LIBRARY_SELECT_AMBIENT_FOLDER: 'library:selectAmbientFolder',
@@ -46,6 +54,7 @@ const IPC_CHANNELS: typeof IpcChannelsType = {
 
   QUEUE_GET: 'queue:get',
   QUEUE_ADD: 'queue:add',
+  QUEUE_UPDATE_ITEM: 'queue:updateItem',
   QUEUE_REORDER: 'queue:reorder',
   QUEUE_UNDO_REORDER: 'queue:undoReorder',
   QUEUE_TRANSITION: 'queue:transition',
@@ -69,6 +78,7 @@ const IPC_CHANNELS: typeof IpcChannelsType = {
   EVENT_QUEUE_UPDATED: 'event:queue:updated',
   EVENT_PLAYER_STATE_CHANGED: 'event:player:stateChanged',
   EVENT_MONITORS_CHANGED: 'event:display:monitorsChanged',
+  EVENT_PUBLIC_OVERLAY_CHANGED: 'event:public:overlayChanged',
 };
 
 const api: KaraokeAPI = {
@@ -76,6 +86,17 @@ const api: KaraokeAPI = {
   getSettings: () => ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_GET),
   updateSettings: (updates: UpdateSettingsDTO) =>
     ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_UPDATE, updates),
+
+  // Volúmenes memorizados y Pantalla Pública
+  getVolumes: () => ipcRenderer.invoke(IPC_CHANNELS.VOLUMES_GET_ALL),
+  saveSongVolume: (songKey: string, volume: number) =>
+    ipcRenderer.invoke(IPC_CHANNELS.VOLUMES_SAVE_SONG, { songKey, volume }),
+  saveGlobalVolumes: (updates: Partial<Omit<VolumesStoreDTO, 'songs'>>) =>
+    ipcRenderer.invoke(IPC_CHANNELS.VOLUMES_SAVE_GLOBAL, updates),
+  selectPublicBackground: () => ipcRenderer.invoke(IPC_CHANNELS.PUBLIC_SELECT_BACKGROUND),
+  resetPublicBackground: () => ipcRenderer.invoke(IPC_CHANNELS.PUBLIC_RESET_BACKGROUND),
+  broadcastPublicOverlay: (partial: Partial<PublicOverlayStateDTO>) =>
+    ipcRenderer.invoke(IPC_CHANNELS.PUBLIC_BROADCAST_OVERLAY, partial),
 
   // Sesión
   getCurrentSession: () => ipcRenderer.invoke(IPC_CHANNELS.SESSION_GET_CURRENT),
@@ -122,6 +143,8 @@ const api: KaraokeAPI = {
     ipcRenderer.invoke(IPC_CHANNELS.QUEUE_GET, { sessionId }),
   addToQueue: (payload: AddToQueueDTO) =>
     ipcRenderer.invoke(IPC_CHANNELS.QUEUE_ADD, payload),
+  updateQueueItem: (payload: UpdateQueueItemDTO) =>
+    ipcRenderer.invoke(IPC_CHANNELS.QUEUE_UPDATE_ITEM, payload),
   reorderQueue: (payload: ReorderQueueDTO) =>
     ipcRenderer.invoke(IPC_CHANNELS.QUEUE_REORDER, payload),
   undoReorder: (payload: UndoReorderDTO) =>
@@ -190,6 +213,14 @@ const api: KaraokeAPI = {
     ipcRenderer.on(IPC_CHANNELS.EVENT_MONITORS_CHANGED, handler);
     return () => {
       ipcRenderer.removeListener(IPC_CHANNELS.EVENT_MONITORS_CHANGED, handler);
+    };
+  },
+
+  onPublicOverlayChanged: (callback: (overlay: PublicOverlayStateDTO) => void) => {
+    const handler = (_event: IpcRendererEvent, payload: PublicOverlayStateDTO) => callback(payload);
+    ipcRenderer.on(IPC_CHANNELS.EVENT_PUBLIC_OVERLAY_CHANGED, handler);
+    return () => {
+      ipcRenderer.removeListener(IPC_CHANNELS.EVENT_PUBLIC_OVERLAY_CHANGED, handler);
     };
   },
 };

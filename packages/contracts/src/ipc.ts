@@ -3,6 +3,14 @@ export const IPC_CHANNELS = {
   SETTINGS_GET: 'settings:get',
   SETTINGS_UPDATE: 'settings:update',
 
+  // Volúmenes memorizados y fondo público (volumes.json)
+  VOLUMES_GET_ALL: 'volumes:getAll',
+  VOLUMES_SAVE_SONG: 'volumes:saveSong',
+  VOLUMES_SAVE_GLOBAL: 'volumes:saveGlobal',
+  PUBLIC_SELECT_BACKGROUND: 'public:selectBackground',
+  PUBLIC_RESET_BACKGROUND: 'public:resetBackground',
+  PUBLIC_BROADCAST_OVERLAY: 'public:broadcastOverlay',
+
   // Biblioteca y Carpetas
   LIBRARY_SELECT_FOLDER: 'library:selectFolder',
   LIBRARY_SELECT_AMBIENT_FOLDER: 'library:selectAmbientFolder',
@@ -30,6 +38,7 @@ export const IPC_CHANNELS = {
   // Cola
   QUEUE_GET: 'queue:get',
   QUEUE_ADD: 'queue:add',
+  QUEUE_UPDATE_ITEM: 'queue:updateItem',
   QUEUE_REORDER: 'queue:reorder',
   QUEUE_UNDO_REORDER: 'queue:undoReorder',
   QUEUE_TRANSITION: 'queue:transition',
@@ -56,6 +65,7 @@ export const IPC_CHANNELS = {
   EVENT_QUEUE_UPDATED: 'event:queue:updated',
   EVENT_PLAYER_STATE_CHANGED: 'event:player:stateChanged',
   EVENT_MONITORS_CHANGED: 'event:display:monitorsChanged',
+  EVENT_PUBLIC_OVERLAY_CHANGED: 'event:public:overlayChanged',
 } as const;
 
 export type IpcChannel = (typeof IPC_CHANNELS)[keyof typeof IPC_CHANNELS];

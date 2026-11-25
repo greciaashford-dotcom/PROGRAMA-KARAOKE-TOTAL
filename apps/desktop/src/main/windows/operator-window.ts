@@ -9,11 +9,11 @@ export function createOperatorWindow(): BrowserWindow {
 
   const win = new BrowserWindow({
     width: 1366,
-    height: 850,
-    minWidth: 1080,
-    minHeight: 720,
-    title: 'Karaoke Total — Consola del Operador',
-    backgroundColor: '#09090b',
+    height: 820,
+    minWidth: 1200,
+    minHeight: 700,
+    title: 'Katakana Karaoke — Karaoke Total',
+    backgroundColor: '#EEE3CC',
     show: true,
     webPreferences: {
       nodeIntegration: false,

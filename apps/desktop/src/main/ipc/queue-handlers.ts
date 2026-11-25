@@ -2,6 +2,7 @@ import { ipcMain, BrowserWindow } from 'electron';
 import {
   IPC_CHANNELS,
   AddToQueueSchema,
+  UpdateQueueItemSchema,
   ReorderQueueSchema,
   UndoReorderSchema,
   QueueTransitionSchema,
@@ -74,6 +75,26 @@ export function registerQueueHandlers(
       return err(
         ErrorCode.INVALID_STATE_TRANSITION,
         error instanceof Error ? error.message : 'No se pudo añadir a la cola.',
+      );
+    }
+  });
+
+  // 2b. Actualizar turno en cola (tono, tempo o nombre de cantante)
+  ipcMain.handle(IPC_CHANNELS.QUEUE_UPDATE_ITEM, async (_event, rawPayload: unknown) => {
+    try {
+      const parseResult = UpdateQueueItemSchema.safeParse(rawPayload);
+      if (!parseResult.success) {
+        return err(ErrorCode.VALIDATION_ERROR, 'Parámetros de edición de turno inválidos.');
+      }
+
+      const updated = queueRepo.updateQueueItem(parseResult.data);
+      broadcastQueueUpdate(updated.sessionId);
+      return ok(updated);
+    } catch (error: unknown) {
+      console.error('Error actualizando turno en cola:', error);
+      return err(
+        ErrorCode.DATABASE_ERROR,
+        error instanceof Error ? error.message : 'No se pudo actualizar el turno.',
       );
     }
   });

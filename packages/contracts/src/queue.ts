@@ -115,6 +115,14 @@ export const QueueTransitionSchema = z.object({
 });
 export type QueueTransitionDTO = z.infer<typeof QueueTransitionSchema>;
 
+export const UpdateQueueItemSchema = z.object({
+  queueItemId: z.string().uuid(),
+  keyShift: z.number().int().min(-6).max(6).optional(),
+  tempoPercent: z.number().int().min(50).max(150).optional(),
+  singerName: z.string().min(1).optional(),
+});
+export type UpdateQueueItemDTO = z.infer<typeof UpdateQueueItemSchema>;
+
 export const QueueEventDTOSchema = z.object({
   id: z.string().uuid(),
   sessionId: z.string().uuid(),

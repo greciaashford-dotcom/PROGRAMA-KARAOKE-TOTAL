@@ -145,12 +145,15 @@ export function registerPlayerHandlers(
 
         return ok({
           mediaUrl,
+          mediaAssetId: targetItem.song.mediaAssetId,
+          songId: targetItem.song.id,
           queueItemId: targetItem.id,
           title: targetItem.song.title,
           artist: targetItem.song.artist,
           singerName: targetItem.singer.displayName,
           durationMs,
           keyShift: targetItem.keyShift,
+          tempoPercent: targetItem.tempoPercent,
           extension: targetItem.song.asset.extension,
           snapshot,
         });
@@ -229,12 +232,15 @@ export function registerPlayerHandlers(
 
         return ok({
           mediaUrl,
+          mediaAssetId: payload.mediaAssetId,
+          songId: song.id,
           queueItemId: null,
           title: song.title,
           artist: song.artist,
           singerName: 'Reproducción Directa',
           durationMs,
           keyShift: 0,
+          tempoPercent: 100,
           extension: fileDetails.asset.extension,
           snapshot,
         });

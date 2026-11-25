@@ -10,6 +10,7 @@ import {
   QueueItemDTO,
   QueueEventDTO,
   AddToQueueDTO,
+  UpdateQueueItemDTO,
   ReorderQueueDTO,
   UndoReorderDTO,
   QueueTransitionDTO,
@@ -28,14 +29,39 @@ export interface PaginatedResult<T> {
   pageSize: number;
 }
 
+export interface VolumesStoreDTO {
+  songs: Record<string, number>;
+  ambientVolume: number;
+  applauseVolume: number;
+  karaokeDefaultVolume: number;
+  masterVolume: number;
+  autoSaveSongVolume: boolean;
+  autoKaraokeEnabled: boolean;
+  autoKaraokeDelaySec: number;
+  publicBackgroundPath: string | null;
+}
+
+export interface PublicOverlayStateDTO {
+  mode: 'IDLE' | 'COUNTDOWN' | 'READY';
+  countdownSec: number | null;
+  singerName: string | null;
+  songTitle: string | null;
+  quickMessage: string | null;
+  hasCustomBackground: boolean;
+  backgroundVersion: number;
+}
+
 export interface PlayerPrepareResult {
   mediaUrl: string;
+  mediaAssetId: string;
+  songId: string;
   queueItemId: string | null;
   title: string;
   artist: string;
   singerName: string;
   durationMs: number;
   keyShift: number;
+  tempoPercent?: number;
   extension?: string;
   snapshot: PlaybackSnapshotDTO;
 }
@@ -44,6 +70,18 @@ export interface KaraokeAPI {
   // Configuración
   getSettings: () => Promise<Result<SettingsDTO>>;
   updateSettings: (updates: UpdateSettingsDTO) => Promise<Result<SettingsDTO>>;
+
+  // Volúmenes memorizados (volumes.json) y fondo/overlay de Pantalla Pública
+  getVolumes: () => Promise<Result<VolumesStoreDTO>>;
+  saveSongVolume: (songKey: string, volume: number) => Promise<Result<VolumesStoreDTO>>;
+  saveGlobalVolumes: (
+    updates: Partial<Omit<VolumesStoreDTO, 'songs'>>,
+  ) => Promise<Result<VolumesStoreDTO>>;
+  selectPublicBackground: () => Promise<Result<VolumesStoreDTO>>;
+  resetPublicBackground: () => Promise<Result<VolumesStoreDTO>>;
+  broadcastPublicOverlay: (
+    partial: Partial<PublicOverlayStateDTO>,
+  ) => Promise<Result<PublicOverlayStateDTO>>;
 
   // Sesión
   getCurrentSession: () => Promise<Result<SessionDTO | null>>;
@@ -74,19 +112,31 @@ export interface KaraokeAPI {
   // Cola de Reproducción
   getQueue: (sessionId: string) => Promise<Result<QueueItemDTO[]>>;
   addToQueue: (payload: AddToQueueDTO) => Promise<Result<QueueItemDTO>>;
-  reorderQueue: (payload: ReorderQueueDTO) => Promise<Result<{ success: boolean; previousOrder: string[] }>>;
+  updateQueueItem: (payload: UpdateQueueItemDTO) => Promise<Result<QueueItemDTO>>;
+  reorderQueue: (
+    payload: ReorderQueueDTO,
+  ) => Promise<Result<{ success: boolean; previousOrder: string[] }>>;
   undoReorder: (payload: UndoReorderDTO) => Promise<Result<void>>;
   transitionQueue: (payload: QueueTransitionDTO) => Promise<Result<QueueItemDTO>>;
   listQueueEvents: (sessionId: string) => Promise<Result<QueueEventDTO[]>>;
 
   // Reproductor multimedia y control en vivo
-  preparePlayer: (payload: { sessionId: string; queueItemId: string }) => Promise<Result<PlayerPrepareResult>>;
-  previewAsset: (payload: { mediaAssetId: string; sessionId?: string | null }) => Promise<Result<PlayerPrepareResult>>;
+  preparePlayer: (payload: {
+    sessionId: string;
+    queueItemId: string;
+  }) => Promise<Result<PlayerPrepareResult>>;
+  previewAsset: (payload: {
+    mediaAssetId: string;
+    sessionId?: string | null;
+  }) => Promise<Result<PlayerPrepareResult>>;
   sendPlayerCommand: (command: PlayerCommandDTO) => Promise<Result<PlaybackSnapshotDTO>>;
   emergencyStop: () => Promise<Result<PlaybackSnapshotDTO>>;
   getPlayerState: () => Promise<Result<PlaybackSnapshotDTO>>;
   reportPlayerEnded: (queueItemId: string | null) => Promise<Result<PlaybackSnapshotDTO>>;
-  updatePlayerProgress: (positionMs: number, durationMs?: number) => Promise<Result<PlaybackSnapshotDTO>>;
+  updatePlayerProgress: (
+    positionMs: number,
+    durationMs?: number,
+  ) => Promise<Result<PlaybackSnapshotDTO>>;
 
   // Gestión de Pantallas y Monitores
   getMonitors: () => Promise<Result<DisplayInfo[]>>;
@@ -97,9 +147,12 @@ export interface KaraokeAPI {
 
   // Suscripciones a eventos seguros
   onScanProgress: (callback: (payload: unknown) => void) => () => void;
-  onQueueUpdated: (callback: (payload: { sessionId: string; items: QueueItemDTO[] }) => void) => () => void;
+  onQueueUpdated: (
+    callback: (payload: { sessionId: string; items: QueueItemDTO[] }) => void,
+  ) => () => void;
   onPlayerStateChanged: (callback: (snapshot: PlaybackSnapshotDTO) => void) => () => void;
   onMonitorsChanged: (callback: (payload: { monitors: DisplayInfo[] }) => void) => () => void;
+  onPublicOverlayChanged: (callback: (overlay: PublicOverlayStateDTO) => void) => () => void;
 }
 
 declare global {

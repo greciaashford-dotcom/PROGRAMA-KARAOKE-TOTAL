@@ -14,6 +14,8 @@ import { registerLibraryHandlers } from './library-handlers.js';
 import { registerQueueHandlers } from './queue-handlers.js';
 import { registerPlayerHandlers } from './player-handlers.js';
 import { registerDisplayHandlers } from './display-handlers.js';
+import { registerVolumesHandlers } from './volumes-handlers.js';
+import { VolumesStore } from '../storage/volumes-store.js';
 
 export interface IpcRepositories {
   settingsRepo: SettingsRepository;
@@ -22,6 +24,7 @@ export interface IpcRepositories {
   singerRepo: SingerRepository;
   queueRepo: QueueRepository;
   playbackRepo: PlaybackRepository;
+  volumesStore: VolumesStore;
   watcher: MediaFolderWatcher;
   getOperatorWindow: () => BrowserWindow | null;
   getPublicWindow: () => BrowserWindow | null;
@@ -31,6 +34,7 @@ export interface IpcRepositories {
 
 export function registerAllIpcHandlers(repos: IpcRepositories): void {
   registerSettingsHandlers(repos.settingsRepo);
+  registerVolumesHandlers(repos.volumesStore, repos.getOperatorWindow, repos.getAllWindows);
   registerSessionHandlers(repos.sessionRepo);
   registerLibraryHandlers(repos.mediaRepo, repos.watcher, repos.getOperatorWindow);
   registerQueueHandlers(repos.queueRepo, repos.singerRepo, repos.sessionRepo, repos.getAllWindows);

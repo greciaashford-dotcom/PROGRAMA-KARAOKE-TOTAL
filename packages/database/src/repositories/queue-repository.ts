@@ -244,6 +244,57 @@ export class QueueRepository {
     this.reorderQueue(sessionId, previousOrderedItemIds);
   }
 
+  public updateQueueItem(updates: {
+    queueItemId: string;
+    keyShift?: number;
+    tempoPercent?: number;
+    singerName?: string;
+  }): QueueItemDTO {
+    const existing = this.db
+      .select()
+      .from(queueItemsTable)
+      .where(eq(queueItemsTable.id, updates.queueItemId))
+      .get();
+
+    if (!existing) {
+      throw new QueueError('El elemento de cola no existe.');
+    }
+
+    const now = new Date().toISOString();
+    const patch: Partial<typeof queueItemsTable.$inferInsert> = {
+      updatedAt: now,
+    };
+
+    if (updates.keyShift !== undefined) patch.keyShift = updates.keyShift;
+    if (updates.tempoPercent !== undefined) patch.tempoPercent = updates.tempoPercent;
+
+    this.db.transaction(() => {
+      this.db
+        .update(queueItemsTable)
+        .set(patch)
+        .where(eq(queueItemsTable.id, updates.queueItemId))
+        .run();
+
+      if (updates.singerName && updates.singerName.trim()) {
+        this.db
+          .update(singersTable)
+          .set({
+            displayName: updates.singerName.trim(),
+            updatedAt: now,
+          })
+          .where(eq(singersTable.id, existing.singerId))
+          .run();
+      }
+    });
+
+    const items = this.getQueueForSession(existing.sessionId);
+    const updated = items.find((i) => i.id === updates.queueItemId);
+    if (!updated) {
+      throw new QueueError('Error al recuperar elemento actualizado.');
+    }
+    return updated;
+  }
+
   public transitionQueueItem(
     queueItemId: string,
     nextStatus: QueueStatus,

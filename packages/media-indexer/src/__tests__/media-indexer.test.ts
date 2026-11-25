@@ -65,6 +65,13 @@ describe('Indexador Multimedia y Metadatos', () => {
       expect(res.title).toBe('SoloTitulo');
     });
 
+    it('debe limpiar códigos de catálogo al inicio y guiones bajos en archivos .dat/.mp4/.avi', () => {
+      expect(parseSongMetadata('ES20713_SOLAMENTE_TU.dat').title).toBe('SOLAMENTE TU');
+      expect(parseSongMetadata('ES20611-MI_HISTORIA_ENTRE_TUS_DEDOS.dat').title).toBe('MI HISTORIA ENTRE TUS DEDOS');
+      expect(parseSongMetadata('K0045_LA_BIKINA.mp4').title).toBe('LA BIKINA');
+      expect(parseSongMetadata('01234 - EL_TRISTE.avi').title).toBe('EL TRISTE');
+    });
+
     it('debe normalizar texto eliminando tildes, mayúsculas y caracteres especiales', () => {
       const normalized = normalizeSearchText('¡Corazón Espinado! - Maná & Santana');
       expect(normalized).toBe('corazon espinado mana santana');

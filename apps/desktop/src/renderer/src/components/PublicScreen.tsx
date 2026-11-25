@@ -1,99 +1,59 @@
 import React, { useState, useEffect, useRef } from 'react';
-import {
-  PlaybackSnapshotDTO,
-  PlaybackStatus,
-  QueueItemDTO,
-  SessionDTO,
-} from '@karaoke/contracts';
-import { Mic, Disc, Clock, Music, Pause } from 'lucide-react';
+import { PlaybackSnapshotDTO, PlaybackStatus, QueueItemDTO } from '@karaoke/contracts';
+import { PublicOverlayStateDTO } from '../../../preload/types.js';
+import { cleanDisplayTitle, formatCountdownMMSS } from '../utils/title-cleaner.js';
+import { Disc, Pause } from 'lucide-react';
 
+/**
+ * Pantalla Pública Unificada — Katakana Karaoke:
+ * - Usa por defecto la imagen oficial assets/fondo_katakana.png (o imagen personalizada de Configurar)
+ *   para AMBAS vistas: Llamado/Anuncio y Espera/Intervalo.
+ * - object-fit: cover; object-position: top center;
+ * - ZONA PROHIBIDA (0% a 32% de altura): 100% libre para logo "Katakana KARAOKE", siluetas y onda dorada.
+ * - ZONA LIBRE (34% a 88% de altura, 82% de ancho centrado): sin cajas negras opacas, tipografía grande con
+ *   serifa (Georgia / Cambria) y text-shadow suave.
+ * - Sin textos genéricos antiguos ("SESIÓN EN DIRECTO", "— Desconocido", etc.).
+ * - El elemento <video> de la Pantalla Pública se mantiene silenciado (muted) para evitar eco/duplicado
+ *   con el motor principal de audio + pitch-shift de la Consola del Operador.
+ */
 export const PublicScreen: React.FC = () => {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [playbackState, setPlaybackState] = useState<PlaybackStatus>('IDLE');
   const playbackStateRef = useRef<PlaybackStatus>('IDLE');
-  const volumeRef = useRef<number>(100);
   const positionMsRef = useRef<number>(0);
 
   const [currentMediaUrl, setCurrentMediaUrl] = useState<string | null>(null);
   const currentMediaUrlRef = useRef<string | null>(null);
   const [currentQueueItem, setCurrentQueueItem] = useState<QueueItemDTO | null>(null);
   const [nextQueueItem, setNextQueueItem] = useState<QueueItemDTO | null>(null);
-  const [session, setSession] = useState<SessionDTO | null>(null);
-  const [currentTimeStr, setCurrentTimeStr] = useState<string>('');
-  const [showIntroBanner, setShowIntroBanner] = useState<boolean>(true);
-  const [isCursorHidden, setIsCursorHidden] = useState<boolean>(false);
   const [isAudioOnlyTrack, setIsAudioOnlyTrack] = useState<boolean>(false);
-  const cursorTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const [isCursorHidden, setIsCursorHidden] = useState<boolean>(false);
+  const [showIntroBanner, setShowIntroBanner] = useState<boolean>(false);
 
-  // Reloj local en tiempo real para pantalla de cortesía
-  useEffect(() => {
-    const updateTime = () => {
-      const now = new Date();
-      setCurrentTimeStr(
-        now.toLocaleTimeString('es-ES', {
-          hour: '2-digit',
-          minute: '2-digit',
-          hour12: false,
-        }),
-      );
-    };
-    updateTime();
-    const interval = setInterval(updateTime, 1000);
-    return () => clearInterval(interval);
-  }, []);
+  const [overlay, setOverlay] = useState<PublicOverlayStateDTO>({
+    mode: 'IDLE',
+    countdownSec: null,
+    singerName: null,
+    songTitle: null,
+    quickMessage: null,
+    hasCustomBackground: false,
+    backgroundVersion: 0,
+  });
 
-  // Ocultar cursor del ratón tras 2 segundos de inactividad
+  const cursorTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const introTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Ocultar cursor tras 2s de inactividad
   useEffect(() => {
     const handleMouseMove = () => {
       setIsCursorHidden(false);
       if (cursorTimeoutRef.current) clearTimeout(cursorTimeoutRef.current);
-      cursorTimeoutRef.current = setTimeout(() => {
-        setIsCursorHidden(true);
-      }, 2000);
+      cursorTimeoutRef.current = setTimeout(() => setIsCursorHidden(true), 2000);
     };
-
     window.addEventListener('mousemove', handleMouseMove);
     return () => {
       window.removeEventListener('mousemove', handleMouseMove);
       if (cursorTimeoutRef.current) clearTimeout(cursorTimeoutRef.current);
-    };
-  }, []);
-
-  // Cargar estado inicial y suscribirse a eventos
-  useEffect(() => {
-    const initPublicState = async () => {
-      if (!window.karaokeAPI) return;
-
-      const sessionRes = await window.karaokeAPI.getCurrentSession();
-      if (sessionRes.success && sessionRes.data) {
-        setSession(sessionRes.data);
-        const queueRes = await window.karaokeAPI.getQueue(sessionRes.data.id);
-        if (queueRes.success) {
-          updateQueueItems(queueRes.data);
-        }
-      }
-
-      const playerRes = await window.karaokeAPI.getPlayerState();
-      if (playerRes.success && playerRes.data) {
-        handleSnapshot(playerRes.data);
-      }
-    };
-
-    initPublicState();
-
-    const unsubPlayer = window.karaokeAPI.onPlayerStateChanged((snapshot: PlaybackSnapshotDTO) => {
-      handleSnapshot(snapshot);
-    });
-
-    const unsubQueue = window.karaokeAPI.onQueueUpdated((payload) => {
-      if (payload && Array.isArray(payload.items)) {
-        updateQueueItems(payload.items);
-      }
-    });
-
-    return () => {
-      unsubPlayer();
-      unsubQueue();
     };
   }, []);
 
@@ -111,7 +71,6 @@ export const PublicScreen: React.FC = () => {
 
   const handleSnapshot = (snapshot: PlaybackSnapshotDTO) => {
     playbackStateRef.current = snapshot.state;
-    volumeRef.current = snapshot.volume;
     positionMsRef.current = snapshot.positionMs;
     setPlaybackState(snapshot.state);
 
@@ -121,10 +80,12 @@ export const PublicScreen: React.FC = () => {
         currentMediaUrlRef.current = url;
         setCurrentMediaUrl(url);
         setIsAudioOnlyTrack(false);
+
+        if (introTimeoutRef.current) clearTimeout(introTimeoutRef.current);
         setShowIntroBanner(true);
-        setTimeout(() => {
+        introTimeoutRef.current = setTimeout(() => {
           setShowIntroBanner(false);
-        }, 6000);
+        }, 5500);
       }
     } else {
       currentMediaUrlRef.current = null;
@@ -132,55 +93,108 @@ export const PublicScreen: React.FC = () => {
     }
 
     if (videoRef.current) {
-      videoRef.current.volume = snapshot.volume / 100;
-
+      videoRef.current.muted = true; // Audio maestro gestionado por la Consola (evita doble sonido y aplica pitch shift)
       if (snapshot.state === 'PLAYING') {
         if (videoRef.current.paused) {
-          videoRef.current.play().catch(console.error);
+          videoRef.current.play().catch(() => {});
         }
         const drift = Math.abs(videoRef.current.currentTime * 1000 - snapshot.positionMs);
-        if (drift > 1500) {
+        if (drift > 1200) {
           videoRef.current.currentTime = snapshot.positionMs / 1000;
         }
       } else if (snapshot.state === 'PAUSED') {
         if (!videoRef.current.paused) {
           videoRef.current.pause();
         }
-      } else if (snapshot.state === 'STOPPED' || snapshot.state === 'IDLE') {
+      } else if (snapshot.state === 'STOPPED' || snapshot.state === 'IDLE' || snapshot.state === 'ENDED') {
         videoRef.current.pause();
         videoRef.current.currentTime = 0;
       }
     }
   };
 
+  useEffect(() => {
+    const init = async () => {
+      if (!window.karaokeAPI) return;
+
+      const volRes = await window.karaokeAPI.getVolumes();
+      if (volRes.success && volRes.data) {
+        setOverlay((prev) => ({
+          ...prev,
+          hasCustomBackground: Boolean(volRes.data.publicBackgroundPath),
+          backgroundVersion: Date.now(),
+        }));
+      }
+
+      const sessionRes = await window.karaokeAPI.getCurrentSession();
+      if (sessionRes.success && sessionRes.data) {
+        const queueRes = await window.karaokeAPI.getQueue(sessionRes.data.id);
+        if (queueRes.success) updateQueueItems(queueRes.data);
+      }
+
+      const playerRes = await window.karaokeAPI.getPlayerState();
+      if (playerRes.success && playerRes.data) {
+        handleSnapshot(playerRes.data);
+      }
+    };
+
+    init();
+
+    const unsubPlayer = window.karaokeAPI.onPlayerStateChanged(handleSnapshot);
+    const unsubQueue = window.karaokeAPI.onQueueUpdated((payload) => {
+      if (payload && Array.isArray(payload.items)) {
+        updateQueueItems(payload.items);
+      }
+    });
+    const unsubOverlay = window.karaokeAPI.onPublicOverlayChanged((nextOverlay) => {
+      setOverlay(nextOverlay);
+    });
+
+    return () => {
+      unsubPlayer();
+      unsubQueue();
+      unsubOverlay();
+      if (introTimeoutRef.current) clearTimeout(introTimeoutRef.current);
+    };
+  }, []);
+
   const handleCanPlay = () => {
     if (!videoRef.current) return;
-    videoRef.current.volume = volumeRef.current / 100;
+    videoRef.current.muted = true;
     if (videoRef.current.videoWidth === 0 && videoRef.current.videoHeight === 0) {
       setIsAudioOnlyTrack(true);
     } else {
       setIsAudioOnlyTrack(false);
     }
-
     if (playbackStateRef.current === 'PLAYING' && videoRef.current.paused) {
-      if (positionMsRef.current > 1000) {
+      if (positionMsRef.current > 800) {
         videoRef.current.currentTime = positionMsRef.current / 1000;
       }
-      videoRef.current.play().catch(console.error);
-    }
-  };
-
-  /**
-   * INNEGOCIABLE: La pista finaliza al recibir el evento nativo del DOM HTML5 'ended'.
-   */
-  const handleNativeEnded = async () => {
-    if (currentQueueItem) {
-      await window.karaokeAPI.reportPlayerEnded(currentQueueItem.id);
+      videoRef.current.play().catch(() => {});
     }
   };
 
   const isVideoActive =
     (playbackState === 'PLAYING' || playbackState === 'PAUSED') && !!currentMediaUrl;
+
+  const bgImageSrc = overlay.hasCustomBackground
+    ? `karaoke-media://background?v=${overlay.backgroundVersion}`
+    : './assets/fondo_katakana.png';
+
+  const activeSongTitleClean = cleanDisplayTitle(currentQueueItem?.song?.title);
+  const displaySinger =
+    overlay.singerName ||
+    (playbackState === 'READY' ? currentQueueItem?.singer?.displayName : null) ||
+    nextQueueItem?.singer?.displayName ||
+    null;
+  const displaySongTitle = cleanDisplayTitle(
+    overlay.songTitle ||
+      (playbackState === 'READY' ? currentQueueItem?.song?.title : null) ||
+      nextQueueItem?.song?.title ||
+      '',
+  );
+
+  const isCountdownActive = overlay.mode === 'COUNTDOWN' && overlay.countdownSec !== null;
 
   return (
     <div
@@ -191,11 +205,7 @@ export const PublicScreen: React.FC = () => {
         color: '#ffffff',
         overflow: 'hidden',
         position: 'relative',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
         cursor: isCursorHidden ? 'none' : 'default',
-        fontFamily: "'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, sans-serif",
       }}
     >
       {/* 1. Reproducción de Vídeo a Pantalla Completa */}
@@ -203,9 +213,9 @@ export const PublicScreen: React.FC = () => {
         <video
           ref={videoRef}
           src={currentMediaUrl}
+          muted
           playsInline
           onCanPlay={handleCanPlay}
-          onEnded={handleNativeEnded}
           style={{
             width: '100%',
             height: '100%',
@@ -215,27 +225,88 @@ export const PublicScreen: React.FC = () => {
         />
       )}
 
-      {/* Visualizador en pantalla pública cuando la pista es solo de audio */}
+      {/* Visualizador sobre fondo Katakana si la pista en reproducción es solo audio */}
       {isVideoActive && isAudioOnlyTrack && (
+        <div style={{ position: 'absolute', inset: 0, zIndex: 5 }}>
+          <img
+            src={bgImageSrc}
+            alt=""
+            style={{
+              width: '100%',
+              height: '100%',
+              objectFit: 'cover',
+              objectPosition: 'top center',
+            }}
+          />
+          <div
+            style={{
+              position: 'absolute',
+              top: '34%',
+              height: '54%',
+              left: '9%',
+              width: '82%',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              textAlign: 'center',
+              fontFamily: 'Georgia, Cambria, "Times New Roman", serif',
+              gap: '16px',
+            }}
+          >
+            <Disc
+              size={84}
+              color="#F5C76B"
+              className={playbackState === 'PLAYING' ? 'spin' : ''}
+              style={{ filter: 'drop-shadow(0 4px 16px rgba(0,0,0,0.9))' }}
+            />
+            {currentQueueItem?.singer?.displayName && (
+              <div
+                style={{
+                  fontSize: 'clamp(28px, 3.6vw, 54px)',
+                  fontWeight: 700,
+                  color: '#F5C76B',
+                  textShadow: '0 4px 18px rgba(0,0,0,0.95)',
+                }}
+              >
+                {currentQueueItem.singer.displayName}
+              </div>
+            )}
+            <div
+              style={{
+                fontSize: 'clamp(36px, 5vw, 72px)',
+                fontWeight: 800,
+                color: '#FFFFFF',
+                textShadow: '0 4px 20px rgba(0,0,0,0.95)',
+                lineHeight: 1.15,
+              }}
+            >
+              {activeSongTitleClean}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Aviso discreto al inicio de vídeo (sin cajas opacas pesadas) */}
+      {isVideoActive && !isAudioOnlyTrack && showIntroBanner && currentQueueItem?.singer && activeSongTitleClean && (
         <div
           style={{
             position: 'absolute',
-            inset: 0,
-            background: 'radial-gradient(circle at center, #1f2430 0%, #090b10 100%)',
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: '24px',
-            zIndex: 5,
+            bottom: '44px',
+            left: '48px',
+            fontFamily: 'Georgia, Cambria, "Times New Roman", serif',
+            textShadow: '0 3px 16px rgba(0,0,0,0.98), 0 0 8px rgba(0,0,0,0.95)',
+            zIndex: 15,
           }}
         >
-          <Disc size={96} color="#f59e0b" className={playbackState === 'PLAYING' ? 'spin' : ''} />
-          <div style={{ fontSize: '46px', fontWeight: 900, textAlign: 'center' }}>
-            {currentQueueItem?.song?.title || 'En Reproducción'}
+          <div style={{ fontSize: '22px', color: '#F5C76B', fontWeight: 700, letterSpacing: '1px' }}>
+            Cantado por:
           </div>
-          <div style={{ fontSize: '26px', color: '#94a3b8' }}>
-            {currentQueueItem?.song?.artist || ''}
+          <div style={{ fontSize: '42px', color: '#FFFFFF', fontWeight: 800, lineHeight: 1.1 }}>
+            {currentQueueItem.singer.displayName}
+          </div>
+          <div style={{ fontSize: '30px', color: '#FFB830', fontWeight: 700, marginTop: '4px' }}>
+            {activeSongTitleClean}
           </div>
         </div>
       )}
@@ -246,245 +317,206 @@ export const PublicScreen: React.FC = () => {
           style={{
             position: 'absolute',
             top: '36px',
-            right: '40px',
-            backgroundColor: 'rgba(15, 23, 42, 0.85)',
-            backdropFilter: 'blur(8px)',
-            border: '2px solid #f59e0b',
-            color: '#f59e0b',
-            padding: '10px 20px',
-            borderRadius: '10px',
+            right: '44px',
+            color: '#F5C76B',
             display: 'flex',
             alignItems: 'center',
             gap: '10px',
-            fontSize: '20px',
+            fontSize: '28px',
             fontWeight: 800,
-            letterSpacing: '1px',
+            fontFamily: 'Georgia, Cambria, serif',
+            textShadow: '0 3px 16px rgba(0,0,0,0.98)',
             zIndex: 20,
           }}
         >
-          <Pause size={22} />
-          <span>EN PAUSA</span>
+          <Pause size={30} />
+          <span>PAUSA</span>
         </div>
       )}
 
-      {/* Banner de Presentación Inicial (Fade out tras 6s) */}
-      {isVideoActive && showIntroBanner && currentQueueItem?.song && currentQueueItem?.singer && (
+      {/* Mensaje Rápido del Operador superpuesto durante vídeo */}
+      {isVideoActive && overlay.quickMessage && (
         <div
           style={{
             position: 'absolute',
-            bottom: '40px',
-            left: '40px',
-            backgroundColor: 'rgba(10, 12, 16, 0.85)',
-            backdropFilter: 'blur(10px)',
-            borderLeft: '5px solid #f59e0b',
-            padding: '16px 24px',
-            borderRadius: '0 8px 8px 0',
-            boxShadow: '0 8px 32px rgba(0,0,0,0.6)',
-            zIndex: 15,
+            bottom: '34px',
+            left: '9%',
+            width: '82%',
+            textAlign: 'center',
+            fontFamily: 'Georgia, Cambria, "Times New Roman", serif',
+            fontSize: 'clamp(28px, 3.8vw, 54px)',
+            fontWeight: 800,
+            color: '#FFFFFF',
+            textShadow: '0 4px 20px rgba(0,0,0,0.98), 0 0 12px rgba(0,0,0,0.95)',
+            zIndex: 25,
           }}
         >
-          <div style={{ fontSize: '14px', textTransform: 'uppercase', color: '#f59e0b', fontWeight: 700, letterSpacing: '1px' }}>
-            En Directo
-          </div>
-          <div style={{ fontSize: '28px', fontWeight: 800, marginTop: '4px' }}>
-            {currentQueueItem.song.title}
-          </div>
-          <div style={{ fontSize: '20px', color: '#cbd5e1' }}>
-            {currentQueueItem.song.artist}
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '10px', fontSize: '16px', color: '#93c5fd' }}>
-            <Mic size={18} />
-            <span>
-              Cantante: <strong>{currentQueueItem.singer.displayName}</strong>
-            </span>
-          </div>
+          {overlay.quickMessage}
         </div>
       )}
 
-      {/* 2. Pantalla de Cortesía / Preparación de Cantante (Cuando no hay vídeo reproduciéndose) */}
+      {/* 2. Vista Unificada de Llamado / Anuncio y Espera / Intervalo con Fondo Oficial Katakana */}
       {!isVideoActive && (
-        <div
-          style={{
-            width: '100%',
-            height: '100%',
-            background: 'radial-gradient(circle at center, #181d26 0%, #080a0d 100%)',
-            display: 'flex',
-            flexDirection: 'column',
-            justifyContent: 'space-between',
-            padding: '48px 64px',
-            boxSizing: 'border-box',
-          }}
-        >
-          {/* Cabecera de la Sala */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+        <div style={{ position: 'absolute', inset: 0 }}>
+          <img
+            src={bgImageSrc}
+            alt="Katakana Karaoke"
+            style={{
+              width: '100%',
+              height: '100%',
+              objectFit: 'cover',
+              objectPosition: 'top center',
+              display: 'block',
+            }}
+          />
+
+          {/* ZONA PROHIBIDA: 0% a 32% de altura -> 100% libre para logo Katakana KARAOKE, siluetas y onda dorada */}
+
+          {/* ZONA LIBRE: 34% a 88% de altura, 82% de ancho centrado (sin cajas negras opacas) */}
+          <div
+            style={{
+              position: 'absolute',
+              top: '34%',
+              height: '54%',
+              left: '9%',
+              width: '82%',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: isCountdownActive ? 'space-between' : 'center',
+              textAlign: 'center',
+              fontFamily: 'Georgia, Cambria, "Times New Roman", serif',
+              padding: '1vh 0',
+            }}
+          >
+            {overlay.quickMessage ? (
               <div
                 style={{
-                  width: '56px',
-                  height: '56px',
-                  borderRadius: '12px',
-                  backgroundColor: '#f59e0b',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  color: '#18181b',
+                  fontSize: 'clamp(38px, 5vw, 76px)',
+                  fontWeight: 800,
+                  color: '#FFFFFF',
+                  textShadow: '0 4px 22px rgba(0, 0, 0, 0.92), 0 2px 6px rgba(0, 0, 0, 0.95)',
+                  lineHeight: 1.2,
+                  margin: 'auto 0',
                 }}
               >
-                <Disc size={36} />
+                {overlay.quickMessage}
               </div>
-              <div>
-                <h1 style={{ margin: 0, fontSize: '32px', fontWeight: 800, letterSpacing: '-0.5px' }}>
-                  {session ? session.name : 'KARAOKE TOTAL'}
-                </h1>
-                <div style={{ fontSize: '16px', color: '#94a3b8', marginTop: '2px' }}>
-                  Consola de Directo — Escenario Principal
-                </div>
-              </div>
-            </div>
-
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '10px',
-                fontSize: '26px',
-                fontWeight: 700,
-                color: '#e2e8f0',
-                fontFamily: 'monospace',
-              }}
-            >
-              <Clock size={28} color="#38bdf8" />
-              <span>{currentTimeStr}</span>
-            </div>
-          </div>
-
-          {/* Zona Central: Pista Preparada (READY) o Próxima Actuación */}
-          <div
-            style={{
-              backgroundColor: 'rgba(255, 255, 255, 0.04)',
-              border:
-                playbackState === 'READY'
-                  ? '2px solid #10b981'
-                  : '1px solid rgba(255, 255, 255, 0.08)',
-              borderRadius: '16px',
-              padding: '40px 48px',
-              maxWidth: '850px',
-              margin: '0 auto',
-              width: '100%',
-              boxShadow: '0 20px 40px rgba(0,0,0,0.4)',
-              backdropFilter: 'blur(8px)',
-              textAlign: 'center',
-            }}
-          >
-            {playbackState === 'READY' && currentQueueItem?.song && currentQueueItem?.singer ? (
+            ) : displaySinger && displaySongTitle ? (
               <>
                 <div
                   style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '8px',
-                    backgroundColor: 'rgba(16, 185, 129, 0.2)',
-                    color: '#10b981',
-                    padding: '6px 18px',
-                    borderRadius: '20px',
-                    fontSize: '16px',
-                    fontWeight: 800,
-                    textTransform: 'uppercase',
-                    letterSpacing: '1px',
-                    marginBottom: '20px',
-                  }}
-                >
-                  <Mic size={18} />
-                  ¡Preparado! Sube al escenario
-                </div>
-
-                <div style={{ fontSize: '46px', fontWeight: 900, color: '#f8fafc', marginBottom: '10px' }}>
-                  {currentQueueItem.singer.displayName}
-                </div>
-
-                <div
-                  style={{
                     display: 'flex',
+                    flexDirection: 'column',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    gap: '8px',
-                    fontSize: '26px',
-                    color: '#cbd5e1',
+                    gap: '1.8vh',
+                    flex: 1,
+                    width: '100%',
                   }}
                 >
-                  <Music size={24} color="#f59e0b" />
-                  <span>
-                    <strong>{currentQueueItem.song.title}</strong> — {currentQueueItem.song.artist}
-                  </span>
-                </div>
-              </>
-            ) : nextQueueItem?.song && nextQueueItem?.singer ? (
-              <>
-                <div
-                  style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '8px',
-                    backgroundColor: 'rgba(56, 189, 248, 0.15)',
-                    color: '#38bdf8',
-                    padding: '6px 16px',
-                    borderRadius: '20px',
-                    fontSize: '15px',
-                    fontWeight: 700,
-                    textTransform: 'uppercase',
-                    letterSpacing: '1px',
-                    marginBottom: '20px',
-                  }}
-                >
-                  <Mic size={18} />
-                  A continuación en el escenario
+                  {/* Etiqueta superior en dorado suave (#F5C76B) */}
+                  <div
+                    style={{
+                      fontSize: 'clamp(22px, 2.5vw, 38px)',
+                      fontWeight: 700,
+                      letterSpacing: '2.5px',
+                      textTransform: 'uppercase',
+                      color: '#F5C76B',
+                      textShadow: '0 3px 16px rgba(0, 0, 0, 0.95)',
+                    }}
+                  >
+                    {isCountdownActive || playbackState === 'READY'
+                      ? 'A CONTINUACIÓN EN EL ESCENARIO'
+                      : 'Cantado por:'}
+                  </div>
+
+                  {/* Nombre del cantante protagonista muy grande */}
+                  <div
+                    style={{
+                      fontSize: 'clamp(46px, 6.2vw, 96px)',
+                      fontWeight: 800,
+                      color: '#FFFFFF',
+                      lineHeight: 1.08,
+                      textShadow: '0 5px 24px rgba(0, 0, 0, 0.96), 0 2px 8px rgba(0, 0, 0, 0.95)',
+                      maxWidth: '100%',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    {displaySinger}
+                  </div>
+
+                  {/* Título limpio sin códigos, máx. 2 líneas */}
+                  <div
+                    style={{
+                      fontSize: 'clamp(34px, 4.4vw, 68px)',
+                      fontWeight: 700,
+                      color: '#FFB830',
+                      lineHeight: 1.18,
+                      textShadow: '0 4px 20px rgba(0, 0, 0, 0.95)',
+                      maxWidth: '100%',
+                      display: '-webkit-box',
+                      WebkitLineClamp: 2,
+                      WebkitBoxOrient: 'vertical',
+                      overflow: 'hidden',
+                    }}
+                  >
+                    {displaySongTitle}
+                  </div>
                 </div>
 
-                <div style={{ fontSize: '42px', fontWeight: 900, color: '#f8fafc', marginBottom: '8px' }}>
-                  {nextQueueItem.singer.displayName}
-                </div>
-
-                <div
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: '8px',
-                    fontSize: '24px',
-                    color: '#cbd5e1',
-                  }}
-                >
-                  <Music size={22} color="#f59e0b" />
-                  <span>
-                    <strong>{nextQueueItem.song.title}</strong> — {nextQueueItem.song.artist}
-                  </span>
-                </div>
+                {/* Contador regresivo (76% a 88% de altura de pantalla -> bloque inferior dentro de Zona Libre) */}
+                {isCountdownActive && overlay.countdownSec !== null && (
+                  <div
+                    style={{
+                      fontSize: 'clamp(48px, 6.5vw, 96px)',
+                      fontWeight: 900,
+                      color: '#FF9E2C',
+                      fontFamily: 'Georgia, Cambria, "Times New Roman", serif',
+                      letterSpacing: '4px',
+                      lineHeight: 1,
+                      textShadow: '0 5px 24px rgba(0, 0, 0, 0.98), 0 0 18px rgba(255, 158, 44, 0.35)',
+                      paddingTop: '1vh',
+                    }}
+                  >
+                    {formatCountdownMMSS(overlay.countdownSec)}
+                  </div>
+                )}
               </>
             ) : (
-              <>
-                <div style={{ fontSize: '38px', fontWeight: 800, color: '#f8fafc', marginBottom: '12px' }}>
+              <div
+                style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  gap: '2.2vh',
+                }}
+              >
+                <div
+                  style={{
+                    fontSize: 'clamp(36px, 4.8vw, 72px)',
+                    fontWeight: 800,
+                    color: '#FFFFFF',
+                    textShadow: '0 5px 24px rgba(0, 0, 0, 0.95)',
+                    lineHeight: 1.15,
+                  }}
+                >
                   ¡El escenario está listo!
                 </div>
-                <div style={{ fontSize: '20px', color: '#94a3b8' }}>
-                  Pide tu canción en la cabina del operador para subir a cantar.
+                <div
+                  style={{
+                    fontSize: 'clamp(22px, 2.6vw, 40px)',
+                    fontWeight: 600,
+                    color: '#F5C76B',
+                    textShadow: '0 3px 16px rgba(0, 0, 0, 0.95)',
+                  }}
+                >
+                  Pide tu canción y sube a cantar
                 </div>
-              </>
+              </div>
             )}
-          </div>
-
-          {/* Pie de Pantalla de Cortesía */}
-          <div
-            style={{
-              display: 'flex',
-              justifyContent: 'center',
-              alignItems: 'center',
-              fontSize: '15px',
-              color: '#64748b',
-              borderTop: '1px solid rgba(255, 255, 255, 0.06)',
-              paddingTop: '20px',
-            }}
-          >
-            <span>Karaoke Total — Audio y Vídeo de Alta Definición</span>
           </div>
         </div>
       )}

@@ -10,6 +10,7 @@
   "buildDependenciesFromSource": false,
   "files": [
     "dist/**/*",
+    "assets/**/*",
     "node_modules/**/*",
     "package.json"
   ],

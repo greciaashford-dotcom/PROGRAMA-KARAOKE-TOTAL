@@ -185,7 +185,26 @@ export class MediaRepository {
 
     let healed = 0;
     const now = new Date().toISOString();
-    const recoverableVideoCodecs = new Set(['mjpeg', 'png', 'bmp', 'webp', 'gif', 'hevc', 'h265', 'mpeg4', 'theora']);
+    const recoverableVideoCodecs = new Set([
+      'mjpeg',
+      'png',
+      'bmp',
+      'webp',
+      'gif',
+      'hevc',
+      'h265',
+      'mpeg4',
+      'mpeg1video',
+      'mpeg2video',
+      'msmpeg4',
+      'msmpeg4v2',
+      'msmpeg4v3',
+      'msvideo1',
+      'cdgraphics',
+      'divx',
+      'xvid',
+      'theora',
+    ]);
 
     this.db.transaction(() => {
       for (const row of rows) {
