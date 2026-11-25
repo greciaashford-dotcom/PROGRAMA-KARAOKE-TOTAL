@@ -36,8 +36,9 @@ export function cleanSongTitle(raw: string): string {
     );
   }
 
-  // 4. Reemplazar guiones bajos por espacios y limpiar espacios múltiples / guiones sueltos al borde
+  // 4. Quitar sufijo _AV habitual en pistas VCD (.DAT), reemplazar guiones bajos por espacios y limpiar bordes
   text = text
+    .replace(/[\s_]+AV$/i, '')
     .replace(/_/g, ' ')
     .replace(/\s+/g, ' ')
     .replace(/^[\s\-–—]+|[\s\-–—]+$/g, '')

@@ -77,7 +77,7 @@ export const CatalogQuerySchema = z.object({
   extension: z.string().optional(),
   language: z.string().optional(),
   page: z.number().int().min(1).default(1),
-  pageSize: z.number().int().min(1).max(200).default(50),
+  pageSize: z.number().int().min(1).max(5000).default(50),
   sortBy: z.enum(['title', 'artist', 'createdAt']).default('title'),
   sortOrder: z.enum(['asc', 'desc']).default('asc'),
 });

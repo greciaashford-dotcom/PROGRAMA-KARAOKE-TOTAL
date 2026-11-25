@@ -16,13 +16,13 @@ const IMAGE_MIME_MAP: Record<string, string> = {
   '.bmp': 'image/bmp',
 };
 
-// Tamaño máximo por bloque en peticiones Range abiertas (bytes=start-) -> 2 MB
-// Evita por completo cortes/stalls de Readable.toWeb en Electron 33 y permite reproducción 100% completa + seek instantáneo.
-const MAX_RANGE_CHUNK_BYTES = 2 * 1024 * 1024;
+// Tamaño de lectura por ciclo pull() dentro del ReadableStream nativo (256 KB)
+// Entrega el 100% del rango solicitado (byteRange.start..byteRange.end) sin truncar jamás la canción.
+const STREAM_PULL_CHUNK_BYTES = 256 * 1024;
 
 /**
  * Registra el controlador de protocolo personalizado 'karaoke-media://'.
- * - karaoke-media://asset/<assetId> -> streaming determinista HTTP 206 Partial Content por bloques de 2 MB
+ * - karaoke-media://asset/<assetId> -> streaming completo HTTP 206 Partial Content mediante Web ReadableStream pull-based
  * - karaoke-media://background -> imagen de fondo personalizada para la Pantalla Pública
  */
 export function registerMediaProtocol(
@@ -123,43 +123,89 @@ export function registerMediaProtocol(
       const isPartial =
         rangeHeader !== null && rangeHeader !== undefined && rangeHeader.trim() !== '';
 
-      // Acotar bloques abiertos (ej. bytes=0-) a 2 MB para respuesta inmediata y streaming sin bloqueos
-      let start = byteRange.start;
-      let end = byteRange.end;
-      if (isPartial && end - start + 1 > MAX_RANGE_CHUNK_BYTES) {
-        end = Math.min(fileSize - 1, start + MAX_RANGE_CHUNK_BYTES - 1);
-      }
-
-      const chunkSize = end - start + 1;
-      const buffer = Buffer.allocUnsafe(chunkSize);
       const fh = await fsp.open(playablePath, 'r');
-      let bytesRead = 0;
-      try {
-        while (bytesRead < chunkSize) {
-          const res = await fh.read(buffer, bytesRead, chunkSize - bytesRead, start + bytesRead);
-          if (res.bytesRead === 0) break;
-          bytesRead += res.bytesRead;
+      let currentPos = byteRange.start;
+      const endPos = byteRange.end;
+      let handleClosed = false;
+
+      const closeHandle = async () => {
+        if (!handleClosed) {
+          handleClosed = true;
+          try {
+            await fh.close();
+          } catch {
+            // Ignorar error al cerrar descriptor
+          }
         }
-      } finally {
-        await fh.close();
+      };
+
+      if (request.signal) {
+        request.signal.addEventListener(
+          'abort',
+          () => {
+            closeHandle().catch(() => {});
+          },
+          { once: true },
+        );
       }
 
-      const actualEnd = start + bytesRead - 1;
-      const payload = new Uint8Array(buffer.buffer, buffer.byteOffset, bytesRead);
+      const webStream = new ReadableStream<Uint8Array>({
+        async pull(controller) {
+          if (handleClosed || currentPos > endPos) {
+            await closeHandle();
+            try {
+              controller.close();
+            } catch {
+              // Ignorar si ya estaba cerrado
+            }
+            return;
+          }
+
+          try {
+            const toRead = Math.min(STREAM_PULL_CHUNK_BYTES, endPos - currentPos + 1);
+            const buf = Buffer.allocUnsafe(toRead);
+            const { bytesRead } = await fh.read(buf, 0, toRead, currentPos);
+
+            if (bytesRead <= 0) {
+              await closeHandle();
+              controller.close();
+              return;
+            }
+
+            currentPos += bytesRead;
+            controller.enqueue(new Uint8Array(buf.buffer, buf.byteOffset, bytesRead));
+
+            if (currentPos > endPos) {
+              await closeHandle();
+              controller.close();
+            }
+          } catch (readErr) {
+            await closeHandle();
+            try {
+              controller.error(readErr);
+            } catch {
+              // Ignorar si la petición fue abortada
+            }
+          }
+        },
+        async cancel() {
+          await closeHandle();
+        },
+      });
 
       const headers: Record<string, string> = {
         'Content-Type': mimeType,
-        'Content-Length': String(bytesRead),
+        'Content-Length': String(byteRange.chunkSize),
         'Accept-Ranges': 'bytes',
         'Cache-Control': 'no-cache',
         'Access-Control-Allow-Origin': '*',
       };
 
       if (isPartial) {
-        headers['Content-Range'] = `bytes ${start}-${actualEnd}/${fileSize}`;
+        headers['Content-Range'] = `bytes ${byteRange.start}-${byteRange.end}/${fileSize}`;
       }
 
-      return new Response(payload, {
+      return new Response(webStream, {
         status: isPartial ? 206 : 200,
         headers,
       });

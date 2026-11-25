@@ -73,7 +73,6 @@ export const AmbientColumn: React.FC<AmbientColumnProps> = ({
         page: 1,
         pageSize: 500,
         category: 'AMBIENT',
-        extension: '.mp3',
         sortBy: 'title',
         sortOrder: 'asc',
       });
@@ -87,6 +86,8 @@ export const AmbientColumn: React.FC<AmbientColumnProps> = ({
         if (mp3Only.length > 0 && currentIndex >= mp3Only.length) {
           setCurrentIndex(0);
         }
+      } else {
+        console.error('Error listando pistas MP3 de ambiente:', res.error);
       }
     } catch (err) {
       console.error('Error cargando pistas MP3 de ambiente:', err);
@@ -96,6 +97,17 @@ export const AmbientColumn: React.FC<AmbientColumnProps> = ({
   useEffect(() => {
     fetchAmbientTracks();
   }, [fetchAmbientTracks, refreshTrigger]);
+
+  useEffect(() => {
+    if (!window.karaokeAPI) return;
+    const unsub = window.karaokeAPI.onScanProgress((payload: unknown) => {
+      const p = payload as { status?: string } | null;
+      if (p?.status === 'COMPLETED') {
+        fetchAmbientTracks();
+      }
+    });
+    return unsub;
+  }, [fetchAmbientTracks]);
 
   useEffect(() => {
     onAutoIntervalChange?.(autoIntervalMode);
