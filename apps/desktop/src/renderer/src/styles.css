@@ -1,21 +1,23 @@
-/* Katakana Karaoke — Karaoke Total (Paleta 60-30-10 de Alto Contraste y Tipografía Grande) */
+/* Katakana Karaoke — Karaoke Total (Paleta 60-30-10 + Botones Estilo Btn09 con Círculo Celeste y Ondas SVG) */
 :root {
   /* 60% Principal — Marfil Antiguo */
   --bg-app: #eee3cc;
-  --bg-surface: #f6efe0;
-  --bg-surface-raised: #fbf7ee;
-  --bg-surface-warm: #e4d7bc;
+  --bg-surface: #f7f0e2;
+  --bg-surface-raised: #fcf9f2;
+  --bg-surface-warm: #e5d8bd;
   --bg-surface-hover: #dfd0b1;
 
-  /* 30% Secundario — Negro Piano */
+  /* 30% Secundario — Negro Piano / Gris Pizarra Oscuro (bg-gray-800 / #151515) */
   --ink-piano: #151515;
+  --ink-slate: #1f2937;
   --ink-secondary: #3a352c;
   --ink-muted: #5c5447;
-  --border-subtle: #cfc0a2;
+  --border-subtle: #cbbba0;
   --border-strong: #151515;
 
-  /* 10% Acento — Turquesa Surf */
+  /* 10% Acento — Celeste / Turquesa Surf (#00C2B5 y #29C7FF) */
   --accent-surf: #00c2b5;
+  --accent-surf-bright: #29c7ff;
   --accent-surf-hover: #00a89d;
   --accent-surf-dark: #00857c;
   --accent-surf-soft: rgba(0, 194, 181, 0.18);
@@ -27,11 +29,17 @@
   --status-error: #c92a2a;
   --status-emergency: #b91c1c;
 
-  /* Aliases de compatibilidad para modales existentes */
+  /* Aliases de compatibilidad */
   --text-primary: var(--ink-piano);
   --text-secondary: var(--ink-secondary);
   --text-muted: var(--ink-muted);
   --accent-warm: var(--accent-surf);
+
+  /* Ondas SVG de las esquinas de Btn09 codificadas en Data URI */
+  --btn-wave-left-svg: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 487 487'%3E%3Cpath fill='%23FFFFFF' fill-opacity='0.13' fill-rule='nonzero' d='M0 .3c67 2.1 134.1 4.3 186.3 37 52.2 32.7 89.6 95.8 112.8 150.6 23.2 54.8 32.3 101.4 61.2 149.9 28.9 48.4 77.7 98.8 126.4 149.2H0V.3z'/%3E%3C/svg%3E");
+  --btn-wave-right-svg: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 487 487'%3E%3Cpath fill='%23FFFFFF' fill-opacity='0.13' fill-rule='nonzero' d='M487 486.7c-66.1-3.6-132.3-7.3-186.3-37s-95.9-85.3-126.2-137.2c-30.4-51.8-49.3-99.9-76.5-151.4C70.9 109.6 35.6 54.8.3 0H487v486.7z'/%3E%3C/svg%3E");
+  --btn-wave-left-dark-svg: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 487 487'%3E%3Cpath fill='%23FFFFFF' fill-opacity='0.24' fill-rule='nonzero' d='M0 .3c67 2.1 134.1 4.3 186.3 37 52.2 32.7 89.6 95.8 112.8 150.6 23.2 54.8 32.3 101.4 61.2 149.9 28.9 48.4 77.7 98.8 126.4 149.2H0V.3z'/%3E%3C/svg%3E");
+  --btn-wave-right-dark-svg: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 487 487'%3E%3Cpath fill='%23FFFFFF' fill-opacity='0.24' fill-rule='nonzero' d='M487 486.7c-66.1-3.6-132.3-7.3-186.3-37s-95.9-85.3-126.2-137.2c-30.4-51.8-49.3-99.9-76.5-151.4C70.9 109.6 35.6 54.8.3 0H487v486.7z'/%3E%3C/svg%3E");
 
   --font-sans: "Segoe UI", -apple-system, BlinkMacSystemFont, Roboto, Helvetica, Arial, sans-serif;
   --font-mono: "Cascadia Code", "Consolas", ui-monospace, SFMono-Regular, monospace;
@@ -73,7 +81,7 @@
 
 body {
   font-family: var(--font-sans);
-  background-color: var(--bg-app);
+  background: radial-gradient(circle at 50% 0%, #f5ebd6 0%, #e8dbc0 100%);
   color: var(--ink-piano);
   font-size: 16px;
   line-height: 1.35;
@@ -95,22 +103,23 @@ body {
   flex-direction: column;
   height: 100vh;
   width: 100vw;
-  background-color: var(--bg-app);
+  background: radial-gradient(circle at 50% 0%, #f5ebd6 0%, #e6d8bc 100%);
   color: var(--ink-piano);
   overflow: hidden;
 }
 
-/* Barra superior Negro Piano (30%) */
+/* Barra superior Negro Piano (30%) con reflejo celeste */
 .katakana-topbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  background-color: var(--ink-piano);
+  background: linear-gradient(180deg, #1e242d 0%, #12151a 100%);
   color: #f6efe0;
   padding: 6px 14px;
-  height: 54px;
+  height: 56px;
   flex-shrink: 0;
   border-bottom: 3px solid var(--accent-surf);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
   gap: 10px;
 }
 
@@ -126,14 +135,15 @@ body {
 }
 
 .katakana-brand-pill {
-  background-color: var(--accent-surf);
+  background: linear-gradient(135deg, #00c2b5 0%, #29c7ff 100%);
   color: var(--ink-piano);
   font-size: 12px;
   font-weight: 900;
-  padding: 3px 9px;
+  padding: 3px 10px;
   border-radius: 6px;
   text-transform: uppercase;
   letter-spacing: 0.6px;
+  box-shadow: 0 2px 8px rgba(0, 194, 181, 0.35);
 }
 
 .katakana-clock {
@@ -141,10 +151,11 @@ body {
   font-size: 17px;
   font-weight: 800;
   color: #f6efe0;
-  background-color: #262626;
+  background: linear-gradient(180deg, #27303d 0%, #181d25 100%);
   padding: 5px 12px;
   border-radius: 8px;
-  border: 1px solid #3f3f3f;
+  border: 1px solid rgba(41, 199, 255, 0.35);
+  box-shadow: inset 0 1px 2px rgba(255, 255, 255, 0.08);
 }
 
 /* Área superior de 3 columnas */
@@ -158,30 +169,33 @@ body {
   overflow: hidden;
 }
 
-/* Paneles Marfil Antiguo */
+/* Paneles Marfil Antiguo con acabado de estudio moderno */
 .katakana-panel {
-  background-color: var(--bg-surface);
+  background: linear-gradient(180deg, #faf5e8 0%, #f2e8d2 100%);
   border: 2px solid var(--ink-piano);
-  border-radius: 12px;
+  border-radius: 14px;
   display: flex;
   flex-direction: column;
   min-height: 0;
   overflow: hidden;
-  box-shadow: 0 4px 12px rgba(21, 21, 21, 0.08);
+  box-shadow:
+    0 8px 20px rgba(21, 21, 21, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.75);
 }
 
 .katakana-panel-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 8px 12px;
-  background-color: var(--bg-surface-warm);
+  padding: 8px 13px;
+  background: linear-gradient(180deg, #ebe0c7 0%, #dfd1b3 100%);
   border-bottom: 2px solid var(--ink-piano);
   font-size: 17px;
-  font-weight: 800;
+  font-weight: 900;
   color: var(--ink-piano);
   flex-shrink: 0;
   gap: 8px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.65);
 }
 
 .katakana-panel-body {
@@ -205,81 +219,176 @@ body {
   flex-direction: column;
 }
 
-/* Botones accesibles de alto contraste (mín. 40px, tipografía 15px-16px) */
+/* ============================================================================
+   BOTONES ESTILO Btn09 (button-hover.tsx) ADAPTADOS CON CELESTE (#00C2B5 / #29C7FF)
+   - Fondo elegante con ondas SVG en esquina inferior-izquierda y superior-derecha
+   - Brillo degradado inferior (from-transparent via-transparent to-gray-200/25)
+   - Círculo central expansivo en hover (500ms ease-out) en color Celeste
+   ============================================================================ */
 .btn {
+  --btn-ripple-color: linear-gradient(135deg, #00c2b5 0%, #29c7ff 100%);
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 7px;
   min-height: 40px;
-  padding: 0 14px;
-  border-radius: 8px;
+  padding: 0 15px;
+  border-radius: 9px;
   font-size: 15px;
-  font-weight: 700;
+  font-weight: 800;
+  letter-spacing: -0.2px;
   cursor: pointer;
   border: 2px solid var(--ink-piano);
-  background-color: var(--bg-surface-raised);
-  color: var(--ink-piano);
-  transition: background-color 0.14s ease, transform 0.1s ease, box-shadow 0.14s ease;
+  background-color: #1f2937;
+  background-image:
+    var(--btn-wave-left-svg),
+    var(--btn-wave-right-svg),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.04) 0%, rgba(229, 231, 235, 0.18) 100%);
+  background-position:
+    left -6px bottom 0,
+    right -10px top 0,
+    center;
+  background-repeat: no-repeat, no-repeat, no-repeat;
+  background-size: auto 100%, 46px 100%, 100% 100%;
+  color: #ffffff;
+  box-shadow:
+    0 3px 0 var(--ink-piano),
+    0 4px 10px rgba(0, 0, 0, 0.16);
+  transition:
+    color 0.32s ease,
+    border-color 0.25s ease,
+    transform 0.12s ease,
+    box-shadow 0.22s ease;
   white-space: nowrap;
 }
 
+/* Círculo expansivo central en hover (500ms ease-out) como en Btn09 */
+.btn::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 0;
+  height: 0;
+  border-radius: 9999px;
+  background: var(--btn-ripple-color);
+  transform: translate(-50%, -50%);
+  transition:
+    width 0.5s cubic-bezier(0.16, 1, 0.3, 1),
+    height 0.5s cubic-bezier(0.16, 1, 0.3, 1),
+    opacity 0.4s ease;
+  z-index: -1;
+  pointer-events: none;
+  opacity: 0.96;
+}
+
+/* Re-aplicar las ondas SVG sutiles por encima del círculo expansivo */
+.btn::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image:
+    var(--btn-wave-left-svg),
+    var(--btn-wave-right-svg),
+    linear-gradient(180deg, transparent 55%, rgba(255, 255, 255, 0.16) 100%);
+  background-position:
+    left -6px bottom 0,
+    right -10px top 0,
+    center;
+  background-repeat: no-repeat, no-repeat, no-repeat;
+  background-size: auto 100%, 46px 100%, 100% 100%;
+  z-index: -1;
+  pointer-events: none;
+}
+
 .btn:hover:not(:disabled) {
-  background-color: var(--bg-surface-hover);
+  color: #151515;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.35);
+  box-shadow:
+    0 3px 0 var(--ink-piano),
+    0 6px 16px rgba(0, 194, 181, 0.35);
+}
+
+.btn:hover:not(:disabled)::before {
+  width: 340px;
+  height: 340px;
 }
 
 .btn:active:not(:disabled) {
-  transform: translateY(1px);
+  transform: translateY(2px);
+  box-shadow: 0 1px 0 var(--ink-piano);
 }
 
 .btn:disabled {
-  opacity: 0.45;
+  opacity: 0.42;
   cursor: not-allowed;
+  box-shadow: none;
 }
 
+/* Variante protagonista Celeste / Turquesa Surf (.btn-surf / .btn-primary / .btn-toggle-active) */
 .btn-primary,
-.btn-surf {
+.btn-surf,
+.btn-toggle-active {
+  --btn-ripple-color: linear-gradient(135deg, #29c7ff 0%, #00e1d2 100%);
   background-color: var(--accent-surf);
+  background-image:
+    var(--btn-wave-left-dark-svg),
+    var(--btn-wave-right-dark-svg),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.22) 0%, rgba(0, 140, 130, 0.22) 100%);
   color: var(--ink-piano);
   border: 2px solid var(--ink-piano);
-  font-weight: 800;
-  box-shadow: 0 2px 0 var(--ink-piano);
+  font-weight: 900;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.35);
+  box-shadow:
+    0 3px 0 var(--ink-piano),
+    0 5px 14px rgba(0, 194, 181, 0.32);
 }
 
 .btn-primary:hover:not(:disabled),
-.btn-surf:hover:not(:disabled) {
-  background-color: var(--accent-surf-hover);
+.btn-surf:hover:not(:disabled),
+.btn-toggle-active:hover:not(:disabled) {
+  color: #0b0e14;
+  box-shadow:
+    0 3px 0 var(--ink-piano),
+    0 8px 20px rgba(41, 199, 255, 0.48);
 }
 
+/* Variante oscura Negro Piano (.btn-dark) con círculo expansivo Celeste */
 .btn-dark {
-  background-color: var(--ink-piano);
+  --btn-ripple-color: linear-gradient(135deg, #00c2b5 0%, #29c7ff 100%);
+  background-color: #141820;
   color: #f6efe0;
   border: 2px solid var(--ink-piano);
-  font-weight: 700;
+  font-weight: 800;
 }
 
 .btn-dark:hover:not(:disabled) {
-  background-color: #2b2b2b;
+  color: #151515;
 }
 
+/* Variante de alerta / Stop / Quitar (.btn-danger / .btn-emergency) */
 .btn-danger,
 .btn-emergency {
-  background-color: var(--status-error);
+  --btn-ripple-color: linear-gradient(135deg, #ff4d4d 0%, #e03131 100%);
+  background-color: #b91c1c;
   color: #ffffff;
-  border: 2px solid #7f1d1d;
-  font-weight: 800;
+  border: 2px solid #5c0f0f;
+  font-weight: 900;
+  box-shadow:
+    0 3px 0 #4a0a0a,
+    0 4px 12px rgba(201, 42, 42, 0.3);
 }
 
 .btn-danger:hover:not(:disabled),
 .btn-emergency:hover:not(:disabled) {
-  background-color: #a61e1e;
-}
-
-.btn-toggle-active {
-  background-color: var(--accent-surf);
-  color: var(--ink-piano);
-  border: 2px solid var(--ink-piano);
-  font-weight: 800;
+  color: #ffffff;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+  box-shadow:
+    0 3px 0 #4a0a0a,
+    0 6px 18px rgba(239, 68, 68, 0.48);
 }
 
 .btn-icon {
@@ -292,8 +401,91 @@ body {
 .btn-compact {
   min-height: 36px;
   height: 36px;
-  padding: 0 11px;
+  padding: 0 12px;
   font-size: 14px;
+  border-radius: 8px;
+}
+
+.btn-lg {
+  min-height: 48px;
+  padding: 0 24px;
+  font-size: 17px;
+  border-radius: 10px;
+}
+
+/* Clases explícitas del componente /components/ui/button-hover.tsx (Btn09) */
+.btn-hover-fx::before,
+.btn-hover-fx::after {
+  display: none;
+}
+
+.btn-hover-circle {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 0;
+  height: 0;
+  border-radius: 9999px;
+  background: var(--btn-ripple-color, linear-gradient(135deg, #00c2b5 0%, #29c7ff 100%));
+  transform: translate(-50%, -50%);
+  transition:
+    width 0.5s cubic-bezier(0.16, 1, 0.3, 1),
+    height 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.btn-hover-fx:hover:not(:disabled) .btn-hover-circle {
+  width: 320px;
+  height: 320px;
+}
+
+.btn-hover-wave-left {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  margin-left: -8px;
+  height: 100%;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.btn-hover-wave-right {
+  position: absolute;
+  top: 0;
+  right: 0;
+  margin-right: -12px;
+  height: 100%;
+  width: 48px;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.btn-hover-svg {
+  height: 100%;
+  width: auto;
+  object-fit: cover;
+}
+
+.btn-hover-sheen {
+  position: absolute;
+  inset: 0;
+  margin-top: -4px;
+  width: 100%;
+  height: 100%;
+  border-radius: 8px;
+  background: linear-gradient(180deg, transparent 0%, transparent 50%, rgba(229, 231, 235, 0.28) 100%);
+  pointer-events: none;
+  z-index: 1;
+}
+
+.btn-hover-content {
+  position: relative;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
 }
 
 /* Inputs y selects grandes y claros */
@@ -305,7 +497,7 @@ body {
 
 .form-label {
   font-size: 15px;
-  font-weight: 700;
+  font-weight: 800;
   color: var(--ink-piano);
 }
 
@@ -314,10 +506,12 @@ body {
   padding: 6px 12px;
   background-color: #ffffff;
   border: 2px solid var(--ink-piano);
-  border-radius: 8px;
+  border-radius: 9px;
   color: var(--ink-piano);
   font-size: 16px;
-  font-weight: 600;
+  font-weight: 700;
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.08);
+  transition: border-color 0.16s ease, box-shadow 0.16s ease;
 }
 
 .form-input:focus {
@@ -326,7 +520,7 @@ body {
   outline: none;
 }
 
-/* Sliders de alto contraste */
+/* Sliders de alto contraste con acento celeste */
 input[type="range"] {
   accent-color: var(--accent-surf);
   height: 10px;
@@ -335,10 +529,13 @@ input[type="range"] {
 
 /* Tarjetas internas */
 .katakana-card {
-  background-color: var(--bg-surface-raised);
+  background: linear-gradient(180deg, #fdfbf6 0%, #f5eddc 100%);
   border: 1.5px solid var(--border-subtle);
-  border-radius: 10px;
+  border-radius: 11px;
   padding: 8px 10px;
+  box-shadow:
+    0 2px 6px rgba(21, 21, 21, 0.05),
+    inset 0 1px 0 rgba(255, 255, 255, 0.85);
 }
 
 /* Tabla de Cola y Catálogo */
@@ -352,38 +549,39 @@ input[type="range"] {
   position: sticky;
   top: 0;
   z-index: 2;
-  background-color: var(--bg-surface-warm);
+  background: linear-gradient(180deg, #ebe0c7 0%, #dfd1b3 100%);
   color: var(--ink-piano);
   font-size: 15px;
-  font-weight: 800;
-  padding: 7px 10px;
+  font-weight: 900;
+  padding: 8px 10px;
   border-bottom: 2px solid var(--ink-piano);
   text-transform: uppercase;
-  letter-spacing: 0.3px;
+  letter-spacing: 0.4px;
 }
 
 .katakana-table td {
-  padding: 7px 10px;
+  padding: 8px 10px;
   border-bottom: 1px solid var(--border-subtle);
   font-size: 17px;
   font-weight: 600;
   color: var(--ink-piano);
   vertical-align: middle;
+  transition: background-color 0.15s ease;
 }
 
 .katakana-table tr:hover td {
-  background-color: var(--bg-surface-hover);
+  background-color: rgba(0, 194, 181, 0.12);
 }
 
 .katakana-table tr.row-selected td {
-  background-color: var(--accent-surf-soft);
+  background-color: rgba(0, 194, 181, 0.24);
 }
 
 /* Insignias (pills) */
 .pill {
   display: inline-flex;
   align-items: center;
-  padding: 3px 8px;
+  padding: 3px 9px;
   border-radius: 6px;
   font-weight: 800;
   font-size: 12px;
@@ -395,8 +593,8 @@ input[type="range"] {
 .modal-overlay {
   position: fixed;
   inset: 0;
-  background-color: rgba(21, 21, 21, 0.72);
-  backdrop-filter: blur(3px);
+  background-color: rgba(15, 18, 24, 0.76);
+  backdrop-filter: blur(4px);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -405,16 +603,16 @@ input[type="range"] {
 }
 
 .modal-content {
-  background-color: var(--bg-app);
+  background: linear-gradient(180deg, #f8f1e2 0%, #ece0c8 100%);
   border: 3px solid var(--ink-piano);
-  border-radius: 14px;
+  border-radius: 16px;
   width: 620px;
   max-width: 95vw;
   max-height: 92vh;
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  box-shadow: 0 24px 54px rgba(0, 0, 0, 0.45);
+  box-shadow: 0 28px 64px rgba(0, 0, 0, 0.55);
   color: var(--ink-piano);
 }
 
@@ -423,10 +621,10 @@ input[type="range"] {
   align-items: center;
   justify-content: space-between;
   padding: 12px 18px;
-  background-color: var(--ink-piano);
+  background: linear-gradient(180deg, #1e242d 0%, #12151a 100%);
   color: #f6efe0;
   font-size: 20px;
-  font-weight: 800;
+  font-weight: 900;
   border-bottom: 3px solid var(--accent-surf);
 }
 
@@ -445,7 +643,7 @@ input[type="range"] {
   justify-content: flex-end;
   gap: 10px;
   padding: 12px 18px;
-  background-color: var(--bg-surface-warm);
+  background: linear-gradient(180deg, #e8dcc3 0%, #ddd0b4 100%);
   border-top: 2px solid var(--ink-piano);
 }
 

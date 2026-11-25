@@ -18,6 +18,7 @@ import { PlaybackSnapshotDTO, PlaybackStatus, QueueItemDTO } from '@karaoke/cont
 import { PlayerPrepareResult, PublicOverlayStateDTO } from '../../../preload/types.js';
 import { audioMixerEngine } from '../utils/audio-mixer-engine.js';
 import { cleanDisplayTitle, formatTimeMMSS, formatCountdownMMSS } from '../utils/title-cleaner.js';
+import { Btn09 } from './ui/button-hover.js';
 
 export interface CenterMonitorColumnProps {
   preparedTrack: PlayerPrepareResult | null;
@@ -608,16 +609,16 @@ export const CenterMonitorColumn: React.FC<CenterMonitorColumnProps> = ({
             Stop
           </button>
 
-          <button
+          <Btn09
             type="button"
-            className="btn btn-surf"
+            variant="surf"
             onClick={onLaunchNextOrPlay}
             title="Lanzar / Iniciar siguiente turno de la cola"
             style={{ minHeight: '44px', fontSize: '16px' }}
           >
             <Rocket size={19} />
             Lanzar / Iniciar
-          </button>
+          </Btn09>
         </div>
 
         {/* Controles de Tono (-6 a +6) y Velocidad (1.0x) */}

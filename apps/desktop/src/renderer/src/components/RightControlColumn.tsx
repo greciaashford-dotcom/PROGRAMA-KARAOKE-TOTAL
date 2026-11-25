@@ -15,6 +15,7 @@ import {
 import { QueueItemDTO } from '@karaoke/contracts';
 import { audioMixerEngine, MixerMeterSnapshot } from '../utils/audio-mixer-engine.js';
 import { cleanDisplayTitle, formatCountdownMMSS } from '../utils/title-cleaner.js';
+import { Btn09 } from './ui/button-hover.js';
 
 export interface RightControlColumnProps {
   onOpenCatalogModal: () => void;
@@ -95,10 +96,10 @@ export const RightControlColumn: React.FC<RightControlColumnProps> = ({
       </div>
 
       <div className="katakana-panel-body" style={{ gap: '10px' }}>
-        {/* Botón grande y destacado: Abrir Catálogo / Buscar Canción */}
-        <button
+        {/* Botón grande y destacado: Abrir Catálogo / Buscar Canción (Estilo Btn09 con círculo Celeste) */}
+        <Btn09
           type="button"
-          className="btn btn-surf"
+          variant="surf"
           onClick={onOpenCatalogModal}
           style={{
             minHeight: '54px',
@@ -112,7 +113,7 @@ export const RightControlColumn: React.FC<RightControlColumnProps> = ({
         >
           <Search size={22} strokeWidth={2.6} />
           <span>Abrir Catálogo / Buscar</span>
-        </button>
+        </Btn09>
 
         {/* Tarjeta de Automatización: Auto Karaoke + Cuenta regresiva */}
         <div
@@ -265,16 +266,16 @@ export const RightControlColumn: React.FC<RightControlColumnProps> = ({
           )}
         </div>
 
-        {/* Botón Configurar */}
-        <button
+        {/* Botón Configurar (Estilo Btn09 con círculo Celeste) */}
+        <Btn09
           type="button"
-          className="btn btn-dark"
+          variant="dark"
           onClick={onOpenSettingsModal}
           style={{ width: '100%', minHeight: '44px', fontSize: '16px' }}
         >
           <Settings size={19} />
           Configurar (Fondo, Carpetas y Opciones)
-        </button>
+        </Btn09>
 
         {/* Mezclador de Audio en Miniatura */}
         <div
