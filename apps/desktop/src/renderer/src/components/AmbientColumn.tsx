@@ -253,8 +253,8 @@ export const AmbientColumn: React.FC<AmbientColumnProps> = ({
     const res = await window.karaokeAPI.selectAmbientFiles();
     if (res.success) {
       if (res.data.addedCount > 0) {
+        await fetchAmbientTracks();
         onNotification(`Se añadieron ${res.data.addedCount} archivo(s) MP3 de ambiente.`);
-        setTimeout(() => fetchAmbientTracks(), 500);
       }
     } else {
       onNotification(res.error.message, 'error');
@@ -265,8 +265,8 @@ export const AmbientColumn: React.FC<AmbientColumnProps> = ({
     if (!window.karaokeAPI) return;
     const res = await window.karaokeAPI.selectAmbientFolder();
     if (res.success && res.data) {
+      await fetchAmbientTracks();
       onNotification(`Carpeta MP3 "${res.data.displayName}" vinculada.`);
-      setTimeout(() => fetchAmbientTracks(), 700);
     } else if (!res.success) {
       onNotification(res.error.message, 'error');
     }

@@ -1,9 +1,12 @@
-import { eq, and, like, desc, asc, sql } from 'drizzle-orm';
+import { eq, and, like, desc, asc, sql, inArray } from 'drizzle-orm';
 import { KaraokeDatabase } from '../connection.js';
 import {
   mediaFoldersTable,
   mediaAssetsTable,
   songsTable,
+  queueItemsTable,
+  queueEventsTable,
+  playbackStateTable,
 } from '../schema.js';
 import {
   MediaFolderDTO,
@@ -141,8 +144,61 @@ export class MediaRepository {
   }
 
   public removeFolder(folderId: string): void {
-    // Al eliminar la carpeta, la restricción ON DELETE CASCADE de SQLite limpia automáticamente los activos asociados
-    this.db.delete(mediaFoldersTable).where(eq(mediaFoldersTable.id, folderId)).run();
+    // Limpiar referencias en playback_state y queue_items (ON DELETE RESTRICT) antes de borrar la carpeta
+    // Los archivos físicos en disco del usuario NUNCA se modifican ni se borran.
+    this.db.transaction(() => {
+      const assets = this.db
+        .select({ id: mediaAssetsTable.id })
+        .from(mediaAssetsTable)
+        .where(eq(mediaAssetsTable.folderId, folderId))
+        .all();
+
+      const assetIds = assets.map((a) => a.id);
+
+      if (assetIds.length > 0) {
+        this.db
+          .update(playbackStateTable)
+          .set({ mediaAssetId: null, queueItemId: null, state: 'IDLE', positionMs: 0 })
+          .where(inArray(playbackStateTable.mediaAssetId, assetIds))
+          .run();
+
+        const songs = this.db
+          .select({ id: songsTable.id })
+          .from(songsTable)
+          .where(inArray(songsTable.mediaAssetId, assetIds))
+          .all();
+
+        const songIds = songs.map((s) => s.id);
+        if (songIds.length > 0) {
+          const qItems = this.db
+            .select({ id: queueItemsTable.id })
+            .from(queueItemsTable)
+            .where(inArray(queueItemsTable.songId, songIds))
+            .all();
+
+          const qItemIds = qItems.map((q) => q.id);
+          if (qItemIds.length > 0) {
+            this.db
+              .update(playbackStateTable)
+              .set({ queueItemId: null, mediaAssetId: null, state: 'IDLE', positionMs: 0 })
+              .where(inArray(playbackStateTable.queueItemId, qItemIds))
+              .run();
+
+            this.db
+              .delete(queueEventsTable)
+              .where(inArray(queueEventsTable.queueItemId, qItemIds))
+              .run();
+
+            this.db
+              .delete(queueItemsTable)
+              .where(inArray(queueItemsTable.id, qItemIds))
+              .run();
+          }
+        }
+      }
+
+      this.db.delete(mediaFoldersTable).where(eq(mediaFoldersTable.id, folderId)).run();
+    });
   }
 
   public toggleFolder(folderId: string, enabled: boolean): MediaFolderDTO | null {
@@ -168,7 +224,26 @@ export class MediaRepository {
   public removeAsset(assetId: string): boolean {
     const existing = this.getAssetById(assetId);
     if (!existing) return false;
-    this.db.delete(mediaAssetsTable).where(eq(mediaAssetsTable.id, assetId)).run();
+    this.db.transaction(() => {
+      this.db
+        .update(playbackStateTable)
+        .set({ mediaAssetId: null, queueItemId: null, state: 'IDLE', positionMs: 0 })
+        .where(eq(playbackStateTable.mediaAssetId, assetId))
+        .run();
+
+      const songs = this.db
+        .select({ id: songsTable.id })
+        .from(songsTable)
+        .where(eq(songsTable.mediaAssetId, assetId))
+        .all();
+
+      const songIds = songs.map((s) => s.id);
+      if (songIds.length > 0) {
+        this.db.delete(queueItemsTable).where(inArray(queueItemsTable.songId, songIds)).run();
+      }
+
+      this.db.delete(mediaAssetsTable).where(eq(mediaAssetsTable.id, assetId)).run();
+    });
     return true;
   }
 

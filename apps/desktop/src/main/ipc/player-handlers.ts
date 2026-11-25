@@ -315,9 +315,24 @@ export function registerPlayerHandlers(
         }
 
         case 'STOP': {
+          if (currentState.queueItemId && currentState.sessionId) {
+            try {
+              const items = queueRepo.getQueueForSession(currentState.sessionId);
+              const currentItem = items.find((i) => i.id === currentState.queueItemId);
+              if (currentItem && currentItem.status === 'PLAYING') {
+                queueRepo.transitionQueueItem(currentItem.id, 'PAUSED');
+                broadcastQueue(currentState.sessionId);
+              }
+            } catch {
+              // Ignorar si ya estaba en otro estado
+            }
+          }
+
           const snapshot = playbackRepo.updatePlaybackState({
             state: 'STOPPED',
             positionMs: 0,
+            mediaAssetId: null,
+            queueItemId: null,
           });
           broadcast(IPC_CHANNELS.EVENT_PLAYER_STATE_CHANGED, snapshot);
           return ok(snapshot);
@@ -335,7 +350,6 @@ export function registerPlayerHandlers(
           const snapshot = playbackRepo.updatePlaybackState({
             volume: cmd.volume,
           });
-          broadcast(IPC_CHANNELS.EVENT_PLAYER_STATE_CHANGED, snapshot);
           return ok(snapshot);
         }
       }

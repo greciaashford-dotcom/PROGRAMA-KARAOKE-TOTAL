@@ -81,8 +81,10 @@ export const App: React.FC = () => {
   // Señales de coordinación secuencial (MP3 <-> Aplausos <-> Karaoke)
   const [ambientForceStopSignal, setAmbientForceStopSignal] = useState<number>(0);
   const [ambientAutoStartSignal, setAmbientAutoStartSignal] = useState<number>(0);
+  const [karaokeStopSignal, setKaraokeStopSignal] = useState<number>(0);
   const [isApplauseActive, setIsApplauseActive] = useState<boolean>(false);
   const [isAnyEffectActive, setIsAnyEffectActive] = useState<boolean>(false);
+  const manualStopGuardRef = useRef<boolean>(false);
 
   // Auto Karaoke (SOLO COLA) + Cuenta regresiva
   const [autoKaraokeEnabled, setAutoKaraokeEnabled] = useState<boolean>(false);
@@ -351,6 +353,7 @@ export const App: React.FC = () => {
   const handleLaunchQueueItem = useCallback(
     async (item: QueueItemDTO) => {
       if (!window.karaokeAPI) return;
+      manualStopGuardRef.current = false;
       clearCountdownTimer();
 
       // 1. Detener por completo MP3 de ambiente y cualquier efecto (SIN crossfade / SIN solapamiento)
@@ -435,13 +438,15 @@ export const App: React.FC = () => {
     [broadcastOverlayState, clearCountdownTimer, getNextPendingQueueItem, handleLaunchQueueItem],
   );
 
-  // Si Auto Karaoke está ON, no hay karaoke ni aplausos sonando, no hay countdown corriendo,
-  // y acaba de entrar un turno nuevo a la cola -> iniciar cuenta regresiva automáticamente
+  // Si Auto Karaoke está ON, no hubo parada manual reciente, no hay karaoke ni aplausos sonando,
+  // no hay countdown corriendo, y hay un turno en la cola -> iniciar cuenta regresiva automáticamente
   useEffect(() => {
     if (
       autoKaraokeEnabled &&
+      !manualStopGuardRef.current &&
       playbackState !== 'PLAYING' &&
       playbackState !== 'PAUSED' &&
+      playbackState !== 'STOPPED' &&
       !isApplauseActive &&
       countdownRemainingSec === null &&
       nextQueuedItem
@@ -595,22 +600,29 @@ export const App: React.FC = () => {
 
   const handleStopKaraoke = useCallback(async () => {
     if (!window.karaokeAPI) return;
-    clearCountdownTimer();
-    stopAllEffects();
-    setIsApplauseActive(false);
-    setIsAnyEffectActive(false);
-    setPlaybackState('STOPPED');
-    await window.karaokeAPI.sendPlayerCommand({ command: 'STOP' });
-    showNotice('Reproducción detenida.');
-    if (currentSession) await refreshQueue(currentSession.id);
-  }, [clearCountdownTimer, currentSession, showNotice]);
-
-  const handleEmergencyStop = useCallback(async () => {
+    manualStopGuardRef.current = true;
     clearCountdownTimer();
     stopAllEffects();
     setIsApplauseActive(false);
     setIsAnyEffectActive(false);
     setAmbientForceStopSignal((n) => n + 1);
+    setKaraokeStopSignal((n) => n + 1);
+    setPreparedTrack(null);
+    setPlaybackState('STOPPED');
+    broadcastOverlayState({ mode: 'IDLE', countdownSec: null });
+    await window.karaokeAPI.sendPlayerCommand({ command: 'STOP' });
+    showNotice('Reproducción detenida por completo.');
+    if (currentSession) await refreshQueue(currentSession.id);
+  }, [broadcastOverlayState, clearCountdownTimer, currentSession, showNotice]);
+
+  const handleEmergencyStop = useCallback(async () => {
+    manualStopGuardRef.current = true;
+    clearCountdownTimer();
+    stopAllEffects();
+    setIsApplauseActive(false);
+    setIsAnyEffectActive(false);
+    setAmbientForceStopSignal((n) => n + 1);
+    setKaraokeStopSignal((n) => n + 1);
     setPlaybackState('STOPPED');
     setPreparedTrack(null);
     broadcastOverlayState({ mode: 'IDLE', countdownSec: null });
@@ -721,6 +733,7 @@ export const App: React.FC = () => {
   };
 
   const handleToggleAutoKaraoke = (enabled: boolean) => {
+    if (enabled) manualStopGuardRef.current = false;
     setAutoKaraokeEnabled(enabled);
     window.karaokeAPI?.saveGlobalVolumes({ autoKaraokeEnabled: enabled }).then((res) => {
       if (res.success) setVolumesStore(res.data);
@@ -780,6 +793,7 @@ export const App: React.FC = () => {
     });
 
     if (addRes.success) {
+      manualStopGuardRef.current = false;
       showNotice(
         `Agregado a la Cola (#${addRes.data.position}): ${singer.displayName} — ${cleanDisplayTitle(song.title)} (Tono ${keyShift >= 0 ? `+${keyShift}` : keyShift})`,
       );
@@ -828,11 +842,40 @@ export const App: React.FC = () => {
     if (res.success) await refreshQueue(currentSession.id);
   };
 
+  const handleRemoveQueueItem = async (item: QueueItemDTO) => {
+    if (!window.karaokeAPI || !currentSession) return;
+    // Si el turno que se quita es el que está sonando o cargado, detener la reproducción limpiamente primero
+    if (preparedTrack?.queueItemId === item.id || item.status === 'PLAYING') {
+      manualStopGuardRef.current = true;
+      clearCountdownTimer();
+      stopAllEffects();
+      setIsApplauseActive(false);
+      setIsAnyEffectActive(false);
+      setKaraokeStopSignal((n) => n + 1);
+      setPreparedTrack(null);
+      setPlaybackState('STOPPED');
+      broadcastOverlayState({ mode: 'IDLE', countdownSec: null });
+      await window.karaokeAPI.sendPlayerCommand({ command: 'STOP' });
+    }
+    const res = await window.karaokeAPI.transitionQueue({
+      queueItemId: item.id,
+      nextStatus: 'CANCELLED',
+    });
+    if (res.success) {
+      await refreshQueue(currentSession.id);
+      showNotice(`Turno quitado de la cola: ${cleanDisplayTitle(item.song?.title)}`);
+    } else {
+      showNotice(res.error.message, 'error');
+    }
+  };
+
   const handleTransitionQueueItem = async (itemId: string, nextStatus: QueueStatus) => {
     if (!window.karaokeAPI || !currentSession) return;
     const res = await window.karaokeAPI.transitionQueue({ queueItemId: itemId, nextStatus });
     if (res.success) {
       await refreshQueue(currentSession.id);
+    } else {
+      showNotice(res.error.message, 'error');
     }
   };
 
@@ -1066,6 +1109,7 @@ export const App: React.FC = () => {
         <CenterMonitorColumn
           preparedTrack={preparedTrack}
           playbackState={playbackState}
+          stopSignal={karaokeStopSignal}
           onPlaybackStateChange={setPlaybackState}
           onNativeTrackEnded={handleNativeTrackEnded}
           onLaunchNextOrPlay={handleLaunchNextOrPlay}
@@ -1140,7 +1184,7 @@ export const App: React.FC = () => {
         defaultKaraokeVolume={volumesStore.karaokeDefaultVolume}
         onLaunchItem={handleLaunchQueueItem}
         onEditItem={(item) => setEditingQueueItem(item)}
-        onRemoveItem={(item) => handleTransitionQueueItem(item.id, 'CANCELLED')}
+        onRemoveItem={handleRemoveQueueItem}
         onMoveItem={handleMoveQueueItem}
         onRequeueItem={handleTransitionQueueItem}
         onTriggerApplause={triggerManualApplause}
@@ -1219,9 +1263,15 @@ export const App: React.FC = () => {
           setCatalogRefreshTrigger((n) => n + 1);
         }}
         onRemoveFolder={async (folderId) => {
-          await window.karaokeAPI?.removeFolder(folderId);
-          await refreshFolders();
-          setCatalogRefreshTrigger((n) => n + 1);
+          const res = await window.karaokeAPI?.removeFolder(folderId);
+          if (res?.success) {
+            await refreshFolders();
+            if (currentSession) await refreshQueue(currentSession.id);
+            setCatalogRefreshTrigger((n) => n + 1);
+            showNotice('Carpeta quitada del catálogo (tus archivos en disco siguen intactos).');
+          } else if (res && !res.success) {
+            showNotice(res.error.message, 'error');
+          }
         }}
       />
 

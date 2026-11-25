@@ -1,5 +1,6 @@
 import { ipcMain, dialog, shell, BrowserWindow, app } from 'electron';
 import * as fs from 'node:fs';
+import * as fsp from 'node:fs/promises';
 import * as path from 'node:path';
 import {
   IPC_CHANNELS,
@@ -10,12 +11,16 @@ import {
   err,
   ErrorCode,
 } from '@karaoke/contracts';
-import { MediaRepository } from '@karaoke/database';
+import { MediaRepository, BatchItemInput } from '@karaoke/database';
 import {
   scanAuthorizedFolder,
   MediaFolderWatcher,
   assertSafePath,
   analyzeMediaFile,
+  calculateFastFingerprint,
+  parseSongMetadata,
+  normalizeSearchText,
+  getSafeRelativePath,
 } from '@karaoke/media-indexer';
 import { z } from 'zod';
 
@@ -27,12 +32,96 @@ const MediaAssetIdSchema = z.object({
   mediaAssetId: z.string().uuid(),
 });
 
+async function collectMp3FilesRecursive(dir: string, acc: string[] = []): Promise<string[]> {
+  let entries: fs.Dirent[];
+  try {
+    entries = await fsp.readdir(dir, { withFileTypes: true });
+  } catch {
+    return acc;
+  }
+
+  for (const entry of entries) {
+    if (entry.name.startsWith('.')) continue;
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      await collectMp3FilesRecursive(full, acc);
+    } else if (entry.isFile() && path.extname(entry.name).toLowerCase() === '.mp3') {
+      acc.push(full);
+    }
+  }
+  return acc;
+}
+
+/**
+ * Indexa de forma inmediata y directa todos los archivos .mp3 de una carpeta de Música de Ambiente
+ * sin bloquearse esperando a ffprobe, garantizando disponibilidad instantánea en la lista MP3.
+ */
+async function indexAmbientMp3DirectoryImmediate(
+  mediaRepo: MediaRepository,
+  folderId: string,
+  rootPath: string,
+): Promise<number> {
+  const startTime = new Date().toISOString();
+  mediaRepo.updateFolderScanStatus(folderId, 'SCANNING', startTime, null);
+
+  const mp3Paths = await collectMp3FilesRecursive(rootPath);
+  const batchInputs: BatchItemInput[] = [];
+
+  for (const fullPath of mp3Paths) {
+    try {
+      const safePath = await assertSafePath(rootPath, fullPath);
+      const stats = await fsp.stat(safePath);
+      const relativePath = getSafeRelativePath(rootPath, safePath);
+      const filename = path.basename(safePath);
+      const fingerprint = await calculateFastFingerprint(safePath, stats.size, stats.mtimeMs);
+      const parsed = parseSongMetadata(filename);
+      const searchTextNormalized = normalizeSearchText(`${parsed.artist} ${parsed.title} ${filename}`);
+
+      batchInputs.push({
+        relativePath,
+        filename,
+        extension: '.mp3',
+        sizeBytes: stats.size,
+        modifiedAt: new Date(stats.mtimeMs).toISOString(),
+        fingerprint,
+        durationMs: null,
+        container: 'mp3',
+        videoCodec: null,
+        audioCodec: 'mp3',
+        width: null,
+        height: null,
+        audioChannels: 2,
+        status: 'AVAILABLE',
+        title: parsed.title,
+        artist: parsed.artist,
+        searchTextNormalized,
+      });
+    } catch (err) {
+      console.warn(`[Ambiente MP3] Omitiendo archivo ${fullPath}:`, err);
+    }
+  }
+
+  mediaRepo.syncScannedBatch(folderId, batchInputs);
+  const seenPaths = new Set(batchInputs.map((b) => b.relativePath));
+  mediaRepo.reconcileMissingAssets(folderId, seenPaths);
+  mediaRepo.updateFolderScanStatus(folderId, 'COMPLETED', startTime, new Date().toISOString());
+
+  return batchInputs.length;
+}
+
 export function registerLibraryHandlers(
   mediaRepo: MediaRepository,
   watcher: MediaFolderWatcher,
   getWindow: () => BrowserWindow | null,
 ): void {
   const activeScans = new Map<string, AbortController>();
+
+  const sendScanProgress = (progress: unknown) => {
+    const win = getWindow();
+    if (win && !win.isDestroyed()) {
+      win.webContents.send(IPC_CHANNELS.EVENT_SCAN_PROGRESS, progress);
+    }
+  };
 
   const triggerFolderScan = (folderId: string): boolean => {
     const folder = mediaRepo.getFolderById(folderId);
@@ -52,9 +141,9 @@ export function registerLibraryHandlers(
       folderId,
       folder.absolutePath,
       (progress) => {
-        const win = getWindow();
-        if (win && !win.isDestroyed()) {
-          win.webContents.send(IPC_CHANNELS.EVENT_SCAN_PROGRESS, progress);
+        // No emitir COMPLETED prematuramente antes de que syncScannedBatch escriba en SQLite
+        if (progress.status !== 'COMPLETED') {
+          sendScanProgress(progress);
         }
       },
       abortController.signal,
@@ -65,8 +154,14 @@ export function registerLibraryHandlers(
 
         if (cancelled) {
           mediaRepo.updateFolderScanStatus(folderId, 'CANCELLED', startTime, endTime);
+          sendScanProgress({
+            folderId,
+            discovered: items.length,
+            processed: items.length,
+            errors: 0,
+            status: 'CANCELLED',
+          });
         } else {
-          // Si la carpeta es de categoría AMBIENT, filtrar estrictamente solo archivos .mp3
           const filteredItems =
             folder.category === 'AMBIENT'
               ? items.filter((i) => i.extension.toLowerCase() === '.mp3')
@@ -98,18 +193,34 @@ export function registerLibraryHandlers(
           mediaRepo.reconcileMissingAssets(folderId, seenPaths);
 
           mediaRepo.updateFolderScanStatus(folderId, 'COMPLETED', startTime, endTime);
+
+          // Ahora SÍ emitir COMPLETED con los registros ya guardados en SQLite
+          sendScanProgress({
+            folderId,
+            discovered: filteredItems.length,
+            processed: filteredItems.length,
+            errors: 0,
+            status: 'COMPLETED',
+          });
         }
       })
       .catch((scanErr) => {
         activeScans.delete(folderId);
         console.error(`Fallo en escaneo de carpeta ${folderId}:`, scanErr);
         mediaRepo.updateFolderScanStatus(folderId, 'FAILED', startTime, new Date().toISOString());
+        sendScanProgress({
+          folderId,
+          discovered: 0,
+          processed: 0,
+          errors: 1,
+          status: 'FAILED',
+        });
       });
 
     return true;
   };
 
-  // 1. Selector de carpeta nativo
+  // 1. Selector de carpeta nativo para Catálogo Karaoke
   ipcMain.handle(IPC_CHANNELS.LIBRARY_SELECT_FOLDER, async () => {
     try {
       const win = getWindow();
@@ -130,19 +241,26 @@ export function registerLibraryHandlers(
       const selectedPath = dialogResult.filePaths[0];
       if (!selectedPath) return ok(null);
 
-      // Verificar si ya existe registrada
+      // Verificar si ya existe registrada en categoría KARAOKE
       const existing = mediaRepo
         .listFolders()
-        .find((f) => path.resolve(mediaRepo.getFolderById(f.id)?.absolutePath || '') === path.resolve(selectedPath));
+        .find(
+          (f) =>
+            f.category === 'KARAOKE' &&
+            path.resolve(mediaRepo.getFolderById(f.id)?.absolutePath || '') ===
+              path.resolve(selectedPath),
+        );
 
       if (existing) {
+        if (!existing.enabled) {
+          mediaRepo.toggleFolder(existing.id, true);
+        }
         return ok(existing);
       }
 
       const displayName = path.basename(selectedPath) || selectedPath;
       const folder = mediaRepo.addFolder(selectedPath, displayName, 'KARAOKE');
 
-      // Configurar watcher para la nueva carpeta con re-escaneo incremental automático
       watcher.watchFolder(folder.id, selectedPath, (event) => {
         if (!activeScans.has(event.folderId)) {
           triggerFolderScan(event.folderId);
@@ -156,7 +274,7 @@ export function registerLibraryHandlers(
     }
   });
 
-  // 1b. Selector de carpeta de música de ambiente (exclusivamente MP3)
+  // 1b. Selector de carpeta de música de ambiente (exclusivamente MP3, indexación inmediata)
   ipcMain.handle(IPC_CHANNELS.LIBRARY_SELECT_AMBIENT_FOLDER, async () => {
     try {
       const win = getWindow();
@@ -177,25 +295,37 @@ export function registerLibraryHandlers(
       const selectedPath = dialogResult.filePaths[0];
       if (!selectedPath) return ok(null);
 
-      const existing = mediaRepo
+      // Buscar solo en categoría AMBIENT para no colisionar con carpetas KARAOKE
+      let folder = mediaRepo
         .listFolders()
-        .find((f) => path.resolve(mediaRepo.getFolderById(f.id)?.absolutePath || '') === path.resolve(selectedPath));
+        .find(
+          (f) =>
+            f.category === 'AMBIENT' &&
+            path.resolve(mediaRepo.getFolderById(f.id)?.absolutePath || '') ===
+              path.resolve(selectedPath),
+        );
 
-      if (existing) {
-        triggerFolderScan(existing.id);
-        return ok(existing);
+      if (!folder) {
+        const displayName = `${path.basename(selectedPath) || selectedPath} (Ambiente MP3)`;
+        folder = mediaRepo.addFolder(selectedPath, displayName, 'AMBIENT');
+      } else if (!folder.enabled) {
+        mediaRepo.toggleFolder(folder.id, true);
       }
 
-      const displayName = `${path.basename(selectedPath) || selectedPath} (Ambiente MP3)`;
-      const folder = mediaRepo.addFolder(selectedPath, displayName, 'AMBIENT');
+      const count = await indexAmbientMp3DirectoryImmediate(mediaRepo, folder.id, selectedPath);
 
       watcher.watchFolder(folder.id, selectedPath, (event) => {
-        if (!activeScans.has(event.folderId)) {
-          triggerFolderScan(event.folderId);
-        }
+        indexAmbientMp3DirectoryImmediate(mediaRepo, event.folderId, selectedPath).catch(() => {});
       });
 
-      triggerFolderScan(folder.id);
+      sendScanProgress({
+        folderId: folder.id,
+        discovered: count,
+        processed: count,
+        errors: 0,
+        status: 'COMPLETED',
+      });
+
       return ok(folder);
     } catch (error) {
       console.error('Error seleccionando carpeta de ambiente:', error);
@@ -203,7 +333,7 @@ export function registerLibraryHandlers(
     }
   });
 
-  // 1c. Selector de archivos individuales MP3 para música de ambiente
+  // 1c. Selector de archivos individuales MP3 para música de ambiente (indexación inmediata)
   ipcMain.handle(IPC_CHANNELS.LIBRARY_SELECT_AMBIENT_FILES, async () => {
     try {
       const win = getWindow();
@@ -225,7 +355,10 @@ export function registerLibraryHandlers(
         (fp) => path.extname(fp).toLowerCase() === '.mp3' && fs.existsSync(fp),
       );
       if (mp3Files.length === 0) {
-        return err(ErrorCode.VALIDATION_ERROR, 'Solo se permiten archivos en formato .mp3 para música de ambiente.');
+        return err(
+          ErrorCode.VALIDATION_ERROR,
+          'Solo se permiten archivos en formato .mp3 para música de ambiente.',
+        );
       }
 
       const ambientDir = path.join(app.getPath('userData'), 'ambient-mp3');
@@ -235,7 +368,12 @@ export function registerLibraryHandlers(
 
       let ambientFolder = mediaRepo
         .listFolders()
-        .find((f) => path.resolve(mediaRepo.getFolderById(f.id)?.absolutePath || '') === path.resolve(ambientDir));
+        .find(
+          (f) =>
+            f.category === 'AMBIENT' &&
+            path.resolve(mediaRepo.getFolderById(f.id)?.absolutePath || '') ===
+              path.resolve(ambientDir),
+        );
 
       if (!ambientFolder) {
         ambientFolder = mediaRepo.addFolder(ambientDir, 'Archivos MP3 de Ambiente', 'AMBIENT');
@@ -246,15 +384,27 @@ export function registerLibraryHandlers(
       for (const srcFile of mp3Files) {
         const destFile = path.join(ambientDir, path.basename(srcFile));
         if (path.resolve(srcFile) !== path.resolve(destFile)) {
-          fs.copyFileSync(srcFile, destFile);
+          await fsp.copyFile(srcFile, destFile);
         }
       }
 
-      triggerFolderScan(ambientFolder.id);
+      await indexAmbientMp3DirectoryImmediate(mediaRepo, ambientFolder.id, ambientDir);
+
+      sendScanProgress({
+        folderId: ambientFolder.id,
+        discovered: mp3Files.length,
+        processed: mp3Files.length,
+        errors: 0,
+        status: 'COMPLETED',
+      });
+
       return ok({ addedCount: mp3Files.length, folderId: ambientFolder.id });
     } catch (error) {
       console.error('Error importando archivos MP3 de ambiente:', error);
-      return err(ErrorCode.SCANNER_ERROR, 'No se pudieron importar los archivos MP3 seleccionados.');
+      return err(
+        ErrorCode.SCANNER_ERROR,
+        'No se pudieron importar los archivos MP3 seleccionados.',
+      );
     }
   });
 
@@ -265,6 +415,20 @@ export function registerLibraryHandlers(
       if (!parseResult.success) {
         return err(ErrorCode.VALIDATION_ERROR, 'ID de activo inválido.');
       }
+
+      // Si el archivo estaba en la carpeta interna ambient-mp3, borrar la copia interna para que no reaparezca
+      const details = mediaRepo.getAssetFileDetails(parseResult.data.mediaAssetId);
+      const internalAmbientDir = path.resolve(path.join(app.getPath('userData'), 'ambient-mp3'));
+      if (details && path.resolve(details.folderAbsolutePath) === internalAmbientDir) {
+        try {
+          if (fs.existsSync(details.absolutePath)) {
+            fs.unlinkSync(details.absolutePath);
+          }
+        } catch {
+          // Ignorar si está en uso
+        }
+      }
+
       mediaRepo.removeAsset(parseResult.data.mediaAssetId);
       return ok(undefined);
     } catch (error) {
@@ -284,7 +448,7 @@ export function registerLibraryHandlers(
     }
   });
 
-  // 3. Quitar carpeta autorizada
+  // 3. Quitar carpeta autorizada (limpia referencias de cola sin borrar archivos del disco)
   ipcMain.handle(IPC_CHANNELS.LIBRARY_REMOVE_FOLDER, async (_event, rawPayload: unknown) => {
     try {
       const parseResult = FolderIdSchema.safeParse(rawPayload);
@@ -303,7 +467,7 @@ export function registerLibraryHandlers(
       return ok(undefined);
     } catch (error) {
       console.error('Error quitando carpeta:', error);
-      return err(ErrorCode.DATABASE_ERROR, 'Error al desautorizar la carpeta.');
+      return err(ErrorCode.DATABASE_ERROR, 'Error al quitar la carpeta del catálogo.');
     }
   });
 
@@ -312,7 +476,10 @@ export function registerLibraryHandlers(
     try {
       const parseResult = ToggleFolderSchema.safeParse(rawPayload);
       if (!parseResult.success) {
-        return err(ErrorCode.VALIDATION_ERROR, 'Parámetros inválidos para cambiar estado de carpeta.');
+        return err(
+          ErrorCode.VALIDATION_ERROR,
+          'Parámetros inválidos para cambiar estado de carpeta.',
+        );
       }
 
       const { folderId, enabled } = parseResult.data;
@@ -357,7 +524,23 @@ export function registerLibraryHandlers(
         mediaRepo.toggleFolder(folderId, true);
       }
 
-      triggerFolderScan(folderId);
+      if (folder.category === 'AMBIENT') {
+        const count = await indexAmbientMp3DirectoryImmediate(
+          mediaRepo,
+          folder.id,
+          folder.absolutePath,
+        );
+        sendScanProgress({
+          folderId: folder.id,
+          discovered: count,
+          processed: count,
+          errors: 0,
+          status: 'COMPLETED',
+        });
+      } else {
+        triggerFolderScan(folderId);
+      }
+
       return ok({ scanId: folderId });
     } catch (error) {
       console.error('Error al iniciar escaneo:', error);
@@ -404,7 +587,7 @@ export function registerLibraryHandlers(
     }
   });
 
-  // 7. Actualizar metadatos de canción (corrección manual de artista/título)
+  // 7. Actualizar metadatos de canción
   ipcMain.handle(IPC_CHANNELS.LIBRARY_UPDATE_SONG, async (_event, rawPayload: unknown) => {
     try {
       const parseResult = UpdateSongSchema.safeParse(rawPayload);
@@ -428,7 +611,7 @@ export function registerLibraryHandlers(
     }
   });
 
-  // 8. Localizar en el Explorador de Windows (seguro, sin exponer la ruta al renderer)
+  // 8. Localizar en el Explorador de Windows
   ipcMain.handle(IPC_CHANNELS.LIBRARY_LOCATE_IN_EXPLORER, async (_event, rawPayload: unknown) => {
     try {
       const parseResult = MediaAssetIdSchema.safeParse(rawPayload);
@@ -457,7 +640,7 @@ export function registerLibraryHandlers(
     }
   });
 
-  // 9. Volver a analizar un archivo específico con ffprobe
+  // 9. Reanalizar archivo con ffprobe
   ipcMain.handle(IPC_CHANNELS.LIBRARY_REANALYZE_ASSET, async (_event, rawPayload: unknown) => {
     try {
       const parseResult = MediaAssetIdSchema.safeParse(rawPayload);
@@ -496,7 +679,7 @@ export function registerLibraryHandlers(
           height: technical.height,
           audioChannels: technical.audioChannels,
           status: technical.status,
-          title: '', // Preserva la existente
+          title: '',
           artist: '',
           searchTextNormalized: '',
         },

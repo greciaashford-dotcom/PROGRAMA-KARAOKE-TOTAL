@@ -214,5 +214,9 @@ describe('Capa de Base de Datos SQLite y Migraciones', () => {
 
     const abbaCheck = repo.queryCatalog({ search: 'waterloo', page: 1, pageSize: 10, sortBy: 'title', sortOrder: 'asc' });
     expect(abbaCheck.items[0]?.asset?.status).toBe('MISSING');
+
+    // 7. Quitar carpeta del catálogo incluso si tiene canciones referenciadas
+    repo.removeFolder(folder.id);
+    expect(repo.listFolders().length).toBe(0);
   });
 });

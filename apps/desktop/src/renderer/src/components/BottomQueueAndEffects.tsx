@@ -277,8 +277,7 @@ export const BottomQueueAndEffects: React.FC<BottomQueueAndEffectsProps> = ({
                               type="button"
                               className="btn btn-danger btn-compact"
                               onClick={() => onRemoveItem(item)}
-                              disabled={isPlaying}
-                              title="Quitar de la cola"
+                              title="Quitar de la cola (si está sonando también la detiene)"
                             >
                               <Trash2 size={15} />
                               Quitar

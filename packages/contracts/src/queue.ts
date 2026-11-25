@@ -23,8 +23,8 @@ export const ALLOWED_QUEUE_TRANSITIONS: Record<QueueStatus, readonly QueueStatus
   CALLED: ['PREPARING', 'READY', 'SKIPPED', 'CANCELLED'] as const,
   PREPARING: ['READY', 'PLAYING', 'FAILED', 'CANCELLED'] as const,
   READY: ['PLAYING', 'FAILED', 'CANCELLED', 'SKIPPED'] as const,
-  PLAYING: ['PAUSED', 'COMPLETED', 'SKIPPED', 'FAILED'] as const,
-  PAUSED: ['PLAYING', 'COMPLETED', 'SKIPPED', 'FAILED'] as const,
+  PLAYING: ['PAUSED', 'COMPLETED', 'SKIPPED', 'CANCELLED', 'FAILED'] as const,
+  PAUSED: ['PLAYING', 'COMPLETED', 'SKIPPED', 'CANCELLED', 'FAILED'] as const,
   COMPLETED: [] as const,
   SKIPPED: ['QUEUED'] as const, // Permite reincorporar a la cola si el cliente regresa
   CANCELLED: ['QUEUED'] as const,

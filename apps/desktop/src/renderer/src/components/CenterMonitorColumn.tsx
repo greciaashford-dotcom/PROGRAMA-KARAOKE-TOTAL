@@ -22,6 +22,7 @@ import { cleanDisplayTitle, formatTimeMMSS, formatCountdownMMSS } from '../utils
 export interface CenterMonitorColumnProps {
   preparedTrack: PlayerPrepareResult | null;
   playbackState: PlaybackStatus;
+  stopSignal: number;
   onPlaybackStateChange: (state: PlaybackStatus) => void;
   onNativeTrackEnded: (finishedTrack: PlayerPrepareResult) => Promise<void>;
   onLaunchNextOrPlay: () => Promise<void>;
@@ -61,6 +62,7 @@ const AUDIO_ONLY_EXTENSIONS = new Set([
 export const CenterMonitorColumn: React.FC<CenterMonitorColumnProps> = ({
   preparedTrack,
   playbackState,
+  stopSignal,
   onPlaybackStateChange,
   onNativeTrackEnded,
   onLaunchNextOrPlay,
@@ -115,7 +117,7 @@ export const CenterMonitorColumn: React.FC<CenterMonitorColumnProps> = ({
           videoRef.current.play().catch(() => {});
         } else if (snapshot.state === 'PAUSED' && !videoRef.current.paused) {
           videoRef.current.pause();
-        } else if (snapshot.state === 'STOPPED' || snapshot.state === 'IDLE') {
+        } else if (snapshot.state === 'STOPPED' || snapshot.state === 'IDLE' || snapshot.state === 'ENDED') {
           videoRef.current.pause();
           videoRef.current.currentTime = 0;
           setCurrentTimeMs(0);
@@ -125,6 +127,22 @@ export const CenterMonitorColumn: React.FC<CenterMonitorColumnProps> = ({
     return unsub;
   }, [onPlaybackStateChange]);
 
+  // Parada física inmediata del elemento <video> (garantiza que JAMÁS siga sonando tras pulsar Stop/Emergencia)
+  useEffect(() => {
+    if (stopSignal > 0 && videoRef.current) {
+      try {
+        videoRef.current.pause();
+        videoRef.current.currentTime = 0;
+        videoRef.current.removeAttribute('src');
+        videoRef.current.load();
+      } catch {
+        // Ignorar
+      }
+      setCurrentTimeMs(0);
+      setDurationMs(0);
+    }
+  }, [stopSignal]);
+
   // Cargar nueva pista en el monitor
   useEffect(() => {
     if (preparedTrack) {
@@ -133,9 +151,14 @@ export const CenterMonitorColumn: React.FC<CenterMonitorColumnProps> = ({
       if (videoRef.current) {
         audioMixerEngine.registerKaraokeElement(videoRef.current);
         videoRef.current.currentTime = 0;
-        videoRef.current.load();
       }
     } else {
+      if (videoRef.current) {
+        videoRef.current.pause();
+        videoRef.current.currentTime = 0;
+        videoRef.current.removeAttribute('src');
+        videoRef.current.load();
+      }
       setCurrentTimeMs(0);
       setDurationMs(0);
     }

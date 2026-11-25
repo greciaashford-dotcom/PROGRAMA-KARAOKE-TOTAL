@@ -1,7 +1,7 @@
 /**
- * Motor de audio profesional para Katakana Karaoke:
- * - Pitch Shifter en tiempo real (-6 a +6 semitonos) sin alterar la velocidad mediante Web Audio API
- *   (algoritmo dual-delay overlap-add con bypass bit-transparente en 0 semitonos).
+ * Motor de audio limpio para Katakana Karaoke:
+ * - Bypass directo 100% puro cuando tono === 0 semitonos (sin retardos ni nodos modulados activos).
+ * - Pitch Shifter en tiempo real (-6 a +6 semitonos) sin alterar velocidad cuando tono !== 0.
  * - Medición estéreo real (Web Audio API AnalyserNode L/R) para Karaoke, Ambiente MP3 y Master.
  */
 
@@ -21,16 +21,6 @@ interface PitchShifterGraph {
   output: GainNode;
   dryGain: GainNode;
   wetGain: GainNode;
-  mod1: AudioBufferSourceNode;
-  mod2: AudioBufferSourceNode;
-  mod3: AudioBufferSourceNode;
-  mod4: AudioBufferSourceNode;
-  fade1: AudioBufferSourceNode;
-  fade2: AudioBufferSourceNode;
-  modGain1: GainNode;
-  modGain2: GainNode;
-  modGain3: GainNode;
-  modGain4: GainNode;
   setPitchSemitones: (semitones: number) => void;
 }
 
@@ -48,7 +38,7 @@ interface AttachedChannelNodes {
 function createFadeBuffer(ctx: AudioContext, activeTime: number, fadeTime: number): AudioBuffer {
   const length1 = Math.floor(activeTime * ctx.sampleRate);
   const length2 = Math.floor((activeTime - 2 * fadeTime) * ctx.sampleRate);
-  const length = length1 + length2;
+  const length = length1 + Math.max(1, length2);
   const buffer = ctx.createBuffer(1, length, ctx.sampleRate);
   const p = buffer.getChannelData(0);
 
@@ -61,7 +51,7 @@ function createFadeBuffer(ctx: AudioContext, activeTime: number, fadeTime: numbe
     if (i < fadeIndex1) {
       value = Math.sqrt(i / fadeLength);
     } else if (i >= fadeIndex2) {
-      value = Math.sqrt(1 - (i - fadeIndex2) / fadeLength);
+      value = Math.sqrt(Math.max(0, 1 - (i - fadeIndex2) / fadeLength));
     } else {
       value = 1;
     }
@@ -81,7 +71,7 @@ function createDelayTimeBuffer(
 ): AudioBuffer {
   const length1 = Math.floor(activeTime * ctx.sampleRate);
   const length2 = Math.floor((activeTime - 2 * fadeTime) * ctx.sampleRate);
-  const length = length1 + length2;
+  const length = length1 + Math.max(1, length2);
   const buffer = ctx.createBuffer(1, length, ctx.sampleRate);
   const p = buffer.getChannelData(0);
 
@@ -95,9 +85,10 @@ function createDelayTimeBuffer(
 }
 
 function createPitchShifterGraph(ctx: AudioContext): PitchShifterGraph {
-  const delayTime = 0.085;
-  const fadeTime = 0.0425;
-  const bufferTime = 0.085;
+  // Parámetros validados con overlap real (activeTime > 2 * fadeTime)
+  const delayTime = 0.1;
+  const fadeTime = 0.025;
+  const bufferTime = 0.1;
 
   const input = ctx.createGain();
   const output = ctx.createGain();
@@ -106,98 +97,108 @@ function createPitchShifterGraph(ctx: AudioContext): PitchShifterGraph {
   dryGain.gain.value = 1;
   wetGain.gain.value = 0;
 
-  // Ruta directa bit-transparente cuando semitonos === 0
+  // Ruta directa 100% pura cuando semitonos === 0
   input.connect(dryGain);
   dryGain.connect(output);
 
-  // Ruta granular dual-delay (Jungle Pitch Shifter) para -6..+6 semitonos sin cambiar velocidad
-  const mod1 = ctx.createBufferSource();
-  const mod2 = ctx.createBufferSource();
-  const mod3 = ctx.createBufferSource();
-  const mod4 = ctx.createBufferSource();
-  const shiftDownBuf = createDelayTimeBuffer(ctx, bufferTime, fadeTime, false);
-  const shiftUpBuf = createDelayTimeBuffer(ctx, bufferTime, fadeTime, true);
+  // Ruta pitch-shifter inicializada perezosamente SOLO cuando se cambia el tono !== 0
+  let wetInitialized = false;
+  let mod1Gain: GainNode | null = null;
+  let mod2Gain: GainNode | null = null;
+  let mod3Gain: GainNode | null = null;
+  let mod4Gain: GainNode | null = null;
+  let modGain1: GainNode | null = null;
+  let modGain2: GainNode | null = null;
+  let modGain3: GainNode | null = null;
+  let modGain4: GainNode | null = null;
 
-  mod1.buffer = shiftDownBuf;
-  mod2.buffer = shiftDownBuf;
-  mod3.buffer = shiftUpBuf;
-  mod4.buffer = shiftUpBuf;
-  mod1.loop = true;
-  mod2.loop = true;
-  mod3.loop = true;
-  mod4.loop = true;
+  const initWetGraph = () => {
+    if (wetInitialized) return;
+    wetInitialized = true;
 
-  const mod1Gain = ctx.createGain();
-  const mod2Gain = ctx.createGain();
-  const mod3Gain = ctx.createGain();
-  const mod4Gain = ctx.createGain();
-  mod3Gain.gain.value = 0;
-  mod4Gain.gain.value = 0;
+    const mod1 = ctx.createBufferSource();
+    const mod2 = ctx.createBufferSource();
+    const mod3 = ctx.createBufferSource();
+    const mod4 = ctx.createBufferSource();
+    const shiftDownBuf = createDelayTimeBuffer(ctx, bufferTime, fadeTime, false);
+    const shiftUpBuf = createDelayTimeBuffer(ctx, bufferTime, fadeTime, true);
 
-  const modGain1 = ctx.createGain();
-  const modGain2 = ctx.createGain();
-  const modGain3 = ctx.createGain();
-  const modGain4 = ctx.createGain();
+    mod1.buffer = shiftDownBuf;
+    mod2.buffer = shiftDownBuf;
+    mod3.buffer = shiftUpBuf;
+    mod4.buffer = shiftUpBuf;
+    mod1.loop = true;
+    mod2.loop = true;
+    mod3.loop = true;
+    mod4.loop = true;
 
-  const delay1 = ctx.createDelay(1);
-  const delay2 = ctx.createDelay(1);
+    mod1Gain = ctx.createGain();
+    mod2Gain = ctx.createGain();
+    mod3Gain = ctx.createGain();
+    mod4Gain = ctx.createGain();
+    mod1Gain.gain.value = 0;
+    mod2Gain.gain.value = 0;
+    mod3Gain.gain.value = 0;
+    mod4Gain.gain.value = 0;
 
-  mod1.connect(mod1Gain);
-  mod2.connect(mod2Gain);
-  mod3.connect(mod3Gain);
-  mod4.connect(mod4Gain);
+    modGain1 = ctx.createGain();
+    modGain2 = ctx.createGain();
+    modGain3 = ctx.createGain();
+    modGain4 = ctx.createGain();
 
-  mod1Gain.connect(modGain1);
-  mod2Gain.connect(modGain2);
-  mod3Gain.connect(modGain3);
-  mod4Gain.connect(modGain4);
+    const delay1 = ctx.createDelay(1);
+    const delay2 = ctx.createDelay(1);
+    delay1.delayTime.value = 0;
+    delay2.delayTime.value = 0;
 
-  modGain1.connect(delay1.delayTime);
-  modGain2.connect(delay2.delayTime);
-  modGain3.connect(delay1.delayTime);
-  modGain4.connect(delay2.delayTime);
+    mod1.connect(mod1Gain);
+    mod2.connect(mod2Gain);
+    mod3.connect(mod3Gain);
+    mod4.connect(mod4Gain);
 
-  const fade1 = ctx.createBufferSource();
-  const fade2 = ctx.createBufferSource();
-  const fadeBuf = createFadeBuffer(ctx, bufferTime, fadeTime);
-  fade1.buffer = fadeBuf;
-  fade2.buffer = fadeBuf;
-  fade1.loop = true;
-  fade2.loop = true;
+    mod1Gain.connect(modGain1);
+    mod2Gain.connect(modGain2);
+    mod3Gain.connect(modGain3);
+    mod4Gain.connect(modGain4);
 
-  const mix1 = ctx.createGain();
-  const mix2 = ctx.createGain();
-  mix1.gain.value = 0;
-  mix2.gain.value = 0;
+    modGain1.connect(delay1.delayTime);
+    modGain2.connect(delay2.delayTime);
+    modGain3.connect(delay1.delayTime);
+    modGain4.connect(delay2.delayTime);
 
-  fade1.connect(mix1.gain);
-  fade2.connect(mix2.gain);
+    const fade1 = ctx.createBufferSource();
+    const fade2 = ctx.createBufferSource();
+    const fadeBuf = createFadeBuffer(ctx, bufferTime, fadeTime);
+    fade1.buffer = fadeBuf;
+    fade2.buffer = fadeBuf;
+    fade1.loop = true;
+    fade2.loop = true;
 
-  input.connect(delay1);
-  input.connect(delay2);
-  delay1.connect(mix1);
-  delay2.connect(mix2);
-  mix1.connect(wetGain);
-  mix2.connect(wetGain);
-  wetGain.connect(output);
+    const mix1 = ctx.createGain();
+    const mix2 = ctx.createGain();
+    mix1.gain.value = 0;
+    mix2.gain.value = 0;
 
-  const t = ctx.currentTime + 0.02;
-  const t2 = t + bufferTime - fadeTime;
-  mod1.start(t);
-  mod2.start(t2);
-  mod3.start(t);
-  mod4.start(t2);
-  fade1.start(t);
-  fade2.start(t2);
+    fade1.connect(mix1.gain);
+    fade2.connect(mix2.gain);
 
-  const setDelayAmount = (val: number) => {
-    modGain1.gain.setTargetAtTime(0.5 * val, ctx.currentTime, 0.01);
-    modGain2.gain.setTargetAtTime(0.5 * val, ctx.currentTime, 0.01);
-    modGain3.gain.setTargetAtTime(0.5 * val, ctx.currentTime, 0.01);
-    modGain4.gain.setTargetAtTime(0.5 * val, ctx.currentTime, 0.01);
+    input.connect(delay1);
+    input.connect(delay2);
+    delay1.connect(mix1);
+    delay2.connect(mix2);
+    mix1.connect(wetGain);
+    mix2.connect(wetGain);
+    wetGain.connect(output);
+
+    const t = ctx.currentTime + 0.02;
+    const t2 = t + bufferTime - fadeTime;
+    mod1.start(t);
+    mod2.start(t2);
+    mod3.start(t);
+    mod4.start(t2);
+    fade1.start(t);
+    fade2.start(t2);
   };
-
-  setDelayAmount(delayTime);
 
   const setPitchSemitones = (semitones: number) => {
     const clamped = Math.max(-6, Math.min(6, Math.round(semitones)));
@@ -208,25 +209,33 @@ function createPitchShifterGraph(ctx: AudioContext): PitchShifterGraph {
       return;
     }
 
+    initWetGraph();
     dryGain.gain.setTargetAtTime(0, now, 0.015);
     wetGain.gain.setTargetAtTime(1, now, 0.015);
 
     const ratio = Math.pow(2, clamped / 12);
     const offset = ratio - 1;
-    if (offset > 0) {
-      // Subir tono
-      mod1Gain.gain.setTargetAtTime(0, now, 0.01);
-      mod2Gain.gain.setTargetAtTime(0, now, 0.01);
-      mod3Gain.gain.setTargetAtTime(1, now, 0.01);
-      mod4Gain.gain.setTargetAtTime(1, now, 0.01);
-      setDelayAmount(delayTime * offset * 2);
-    } else {
-      // Bajar tono
-      mod1Gain.gain.setTargetAtTime(1, now, 0.01);
-      mod2Gain.gain.setTargetAtTime(1, now, 0.01);
-      mod3Gain.gain.setTargetAtTime(0, now, 0.01);
-      mod4Gain.gain.setTargetAtTime(0, now, 0.01);
-      setDelayAmount(delayTime * Math.abs(offset) * 2);
+    const amount = delayTime * Math.abs(offset);
+
+    if (modGain1 && modGain2 && modGain3 && modGain4) {
+      modGain1.gain.setTargetAtTime(amount, now, 0.01);
+      modGain2.gain.setTargetAtTime(amount, now, 0.01);
+      modGain3.gain.setTargetAtTime(amount, now, 0.01);
+      modGain4.gain.setTargetAtTime(amount, now, 0.01);
+    }
+
+    if (mod1Gain && mod2Gain && mod3Gain && mod4Gain) {
+      if (offset > 0) {
+        mod1Gain.gain.setTargetAtTime(0, now, 0.01);
+        mod2Gain.gain.setTargetAtTime(0, now, 0.01);
+        mod3Gain.gain.setTargetAtTime(1, now, 0.01);
+        mod4Gain.gain.setTargetAtTime(1, now, 0.01);
+      } else {
+        mod1Gain.gain.setTargetAtTime(1, now, 0.01);
+        mod2Gain.gain.setTargetAtTime(1, now, 0.01);
+        mod3Gain.gain.setTargetAtTime(0, now, 0.01);
+        mod4Gain.gain.setTargetAtTime(0, now, 0.01);
+      }
     }
   };
 
@@ -235,16 +244,6 @@ function createPitchShifterGraph(ctx: AudioContext): PitchShifterGraph {
     output,
     dryGain,
     wetGain,
-    mod1,
-    mod2,
-    mod3,
-    mod4,
-    fade1,
-    fade2,
-    modGain1,
-    modGain2,
-    modGain3,
-    modGain4,
     setPitchSemitones,
   };
 }
@@ -414,9 +413,6 @@ class RealAudioMeterEngine {
 
 export const audioMixerEngine = new RealAudioMeterEngine();
 
-/**
- * Convierte un volumen porcentual (0..100) a lectura profesional en decibelios (+6 dB a -∞ dB).
- */
 export function volumePercentToDb(percent: number, muted: boolean): string {
   if (muted || percent <= 0) return '-∞ dB';
   if (percent >= 85) {
