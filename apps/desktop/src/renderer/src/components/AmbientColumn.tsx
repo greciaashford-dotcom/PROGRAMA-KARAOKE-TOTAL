@@ -152,12 +152,12 @@ export const AmbientColumn: React.FC<AmbientColumnProps> = ({
     }
   }, [forceStopSignal]);
 
-  // Inicio automático al terminar aplausos (Audio secuencial: Aplausos paran -> MP3 entra de golpe a su volumen memorizado)
+  // Inicio automático al iniciar sesión, durante el conteo regresivo o al terminar un karaoke
   useEffect(() => {
-    if (autoStartSignal > 0 && autoIntervalMode && tracks.length > 0) {
+    if (autoStartSignal > 0) {
       setWantsToPlay(true);
     }
-  }, [autoStartSignal, autoIntervalMode, tracks.length]);
+  }, [autoStartSignal]);
 
   // Control estricto secuencial: si suena Karaoke o Aplausos, el MP3 se detiene de golpe
   useEffect(() => {

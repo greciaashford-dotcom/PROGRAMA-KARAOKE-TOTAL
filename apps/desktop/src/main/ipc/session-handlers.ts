@@ -38,6 +38,7 @@ export function registerSessionHandlers(sessionRepo: SessionRepository): void {
         );
       }
 
+      sessionRepo.closeAllActiveSessions();
       const session = sessionRepo.openSession(parseResult.data.name);
       return ok(session);
     } catch (error) {

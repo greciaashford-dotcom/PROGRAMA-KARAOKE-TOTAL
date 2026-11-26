@@ -115,4 +115,18 @@ export class SessionRepository {
       .where(eq(karaokeSessionsTable.id, sessionId))
       .run();
   }
+
+  public closeAllActiveSessions(): number {
+    const now = new Date().toISOString();
+    const res = this.db
+      .update(karaokeSessionsTable)
+      .set({
+        status: 'CLOSED',
+        closedAt: now,
+        updatedAt: now,
+      })
+      .where(inArray(karaokeSessionsTable.status, ['OPEN', 'PAUSED']))
+      .run();
+    return res.changes;
+  }
 }

@@ -231,7 +231,7 @@ export const RightControlColumn: React.FC<RightControlColumnProps> = ({
                     letterSpacing: '0.04em',
                   }}
                 >
-                  PRÓXIMO CANTANTE
+                  {countdownRemainingSec !== null ? 'CONTEO EN PANTALLAS' : 'PRÓXIMO CANTANTE'}
                 </span>
                 <span
                   style={{
@@ -279,14 +279,20 @@ export const RightControlColumn: React.FC<RightControlColumnProps> = ({
                   className="btn btn-surf btn-compact"
                   onClick={onStartCountdownNow}
                   style={{ minHeight: '36px', fontSize: '15px', fontWeight: 900 }}
+                  title={
+                    countdownRemainingSec !== null
+                      ? 'Saltar el resto del conteo e iniciar el karaoke ya'
+                      : 'Iniciar el conteo regresivo en pantallas para esta canción'
+                  }
                 >
                   <Play size={16} fill="currentColor" />
-                  Iniciar ya
+                  {countdownRemainingSec !== null ? 'Iniciar ya' : 'Lanzar'}
                 </button>
                 <button
                   type="button"
                   className="btn btn-danger btn-compact"
                   onClick={onCancelCountdown}
+                  disabled={countdownRemainingSec === null}
                   style={{ minHeight: '36px', fontSize: '15px', fontWeight: 900 }}
                 >
                   <XCircle size={16} />

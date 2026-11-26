@@ -107,18 +107,15 @@ export class AppLifecycle {
     // Registrar protocolo seguro 'karaoke-media://' (con soporte .dat/.avi/.cdg y fondo personalizado)
     registerMediaProtocol(mediaRepo, volumesStore);
 
-    // Reconciliación resiliente al iniciar:
-    // 1. Cola de sesión: reconciliar estados PLAYING a READY
-    const latestActiveSession = sessionRepo.getLatestActiveSession();
-    if (latestActiveSession) {
-      const { recoveredCount } = queueRepo.recoverSessionQueue(latestActiveSession.id);
-      if (recoveredCount > 0) {
-        console.log(`[Recuperación] Se reconciliaron ${recoveredCount} canciones interrumpidas en la cola.`);
-      }
+    // Al abrir el programa debe iniciar limpio (sin sesión abierta heredada ni reproducción previa)
+    const closedSessions = sessionRepo.closeAllActiveSessions();
+    if (closedSessions > 0) {
+      console.log(`[Inicio Limpio] Se cerraron ${closedSessions} sesión(es) anterior(es) para iniciar con cola limpia.`);
     }
 
-    // 2. Estado de reproducción: nunca iniciar reproducción automática tras un reinicio
-    playbackRepo.reconcileStartup();
+    // Restablecer estado del reproductor a IDLE limpio
+    playbackRepo.resetPlaybackState();
+    playbackRepo.updatePlaybackState({ sessionId: null });
 
     // Reconstruir watchers para todas las carpetas autorizadas y habilitadas
     const folders = mediaRepo.listFolders();

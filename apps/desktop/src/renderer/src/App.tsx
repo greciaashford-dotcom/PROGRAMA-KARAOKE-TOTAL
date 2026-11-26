@@ -18,6 +18,8 @@ import {
   Mic,
   CheckCircle2,
   AlertTriangle,
+  Power,
+  RotateCcw,
 } from 'lucide-react';
 import {
   PlayerPrepareResult,
@@ -50,7 +52,7 @@ const DEFAULT_VOLUMES: VolumesStoreDTO = {
   karaokeDefaultVolume: 85,
   masterVolume: 100,
   autoSaveSongVolume: false,
-  autoKaraokeEnabled: false,
+  autoKaraokeEnabled: true,
   autoKaraokeDelaySec: 20,
   publicBackgroundPath: null,
 };
@@ -78,27 +80,31 @@ export const App: React.FC = () => {
   const [pitchSemitones, setPitchSemitones] = useState<number>(0);
   const [playbackSpeed, setPlaybackSpeed] = useState<number>(1);
 
-  // Señales de coordinación secuencial (MP3 <-> Aplausos <-> Karaoke)
+  // Señales de coordinación secuencial (MP3 <-> Karaoke)
   const [ambientForceStopSignal, setAmbientForceStopSignal] = useState<number>(0);
   const [ambientAutoStartSignal, setAmbientAutoStartSignal] = useState<number>(0);
   const [karaokeStopSignal, setKaraokeStopSignal] = useState<number>(0);
   const [isApplauseActive, setIsApplauseActive] = useState<boolean>(false);
   const [isAnyEffectActive, setIsAnyEffectActive] = useState<boolean>(false);
-  const manualStopGuardRef = useRef<boolean>(false);
 
   // Auto Karaoke (SOLO COLA) + Cuenta regresiva
-  const [autoKaraokeEnabled, setAutoKaraokeEnabled] = useState<boolean>(false);
+  const [autoKaraokeEnabled, setAutoKaraokeEnabled] = useState<boolean>(true);
   const [autoKaraokeDelaySec, setAutoKaraokeDelaySec] = useState<number>(20);
   const [countdownRemainingSec, setCountdownRemainingSec] = useState<number | null>(null);
   const countdownTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const countdownTargetItemRef = useRef<QueueItemDTO | null>(null);
   const queueRef = useRef<QueueItemDTO[]>([]);
-  const autoKaraokeEnabledRef = useRef<boolean>(false);
+  const preparedTrackRef = useRef<PlayerPrepareResult | null>(null);
+  const playbackStateRef = useRef<PlaybackStatus>('IDLE');
+  const autoKaraokeEnabledRef = useRef<boolean>(true);
   const autoKaraokeDelayRef = useRef<number>(20);
   const volumesStoreRef = useRef<VolumesStoreDTO>(DEFAULT_VOLUMES);
+  const currentSessionRef = useRef<SessionDTO | null>(null);
 
-  // Estado compartido con Pantalla Pública
+  // Estado compartido con Pantalla Pública y Pantalla en Miniatura
   const [publicOverlay, setPublicOverlay] = useState<PublicOverlayStateDTO>({
     mode: 'IDLE',
+    sessionActive: false,
     countdownSec: null,
     singerName: null,
     songTitle: null,
@@ -128,13 +134,21 @@ export const App: React.FC = () => {
   const [loading, setLoading] = useState<boolean>(true);
   const [clockText, setClockText] = useState<string>('');
   const [notification, setNotification] = useState<{ text: string; type: 'info' | 'error' }>({
-    text: 'Katakana Karaoke listo para operar.',
+    text: 'Consola limpia. Pulsa "Iniciar Sesión" para comenzar.',
     type: 'info',
   });
 
   useEffect(() => {
     queueRef.current = queue;
   }, [queue]);
+
+  useEffect(() => {
+    preparedTrackRef.current = preparedTrack;
+  }, [preparedTrack]);
+
+  useEffect(() => {
+    playbackStateRef.current = playbackState;
+  }, [playbackState]);
 
   useEffect(() => {
     autoKaraokeEnabledRef.current = autoKaraokeEnabled;
@@ -147,6 +161,10 @@ export const App: React.FC = () => {
   useEffect(() => {
     volumesStoreRef.current = volumesStore;
   }, [volumesStore]);
+
+  useEffect(() => {
+    currentSessionRef.current = currentSession;
+  }, [currentSession]);
 
   const showNotice = useCallback((text: string, type: 'info' | 'error' = 'info') => {
     setNotification({ text, type });
@@ -182,6 +200,7 @@ export const App: React.FC = () => {
       clearInterval(countdownTimerRef.current);
       countdownTimerRef.current = null;
     }
+    countdownTargetItemRef.current = null;
     setCountdownRemainingSec(null);
   }, []);
 
@@ -195,12 +214,15 @@ export const App: React.FC = () => {
     return [];
   };
 
-  const refreshQueue = async (sessionId: string) => {
-    if (!window.karaokeAPI) return;
+  const refreshQueue = async (sessionId: string): Promise<QueueItemDTO[]> => {
+    if (!window.karaokeAPI) return [];
     const res = await window.karaokeAPI.getQueue(sessionId);
     if (res.success) {
       setQueue(res.data);
+      queueRef.current = res.data;
+      return res.data;
     }
+    return [];
   };
 
   const refreshSingers = async (sessionId: string) => {
@@ -211,29 +233,15 @@ export const App: React.FC = () => {
     }
   };
 
-  const ensureActiveSession = async (): Promise<SessionDTO | null> => {
-    if (currentSession) return currentSession;
-    if (!window.karaokeAPI) return null;
-    const res = await window.karaokeAPI.openSession('Katakana Karaoke');
-    if (res.success) {
-      setCurrentSession(res.data);
-      await refreshQueue(res.data.id);
-      await refreshSingers(res.data.id);
-      return res.data;
-    }
-    return null;
-  };
-
-  // Inicialización de la app
+  // Inicialización de la app: SIEMPRE LIMPIA AL ABRIR EL PROGRAMA
   useEffect(() => {
     const init = async () => {
       try {
         if (!window.karaokeAPI) return;
 
-        const [settingsRes, volumesRes, sessionRes, pubRes] = await Promise.all([
+        const [settingsRes, volumesRes, pubRes] = await Promise.all([
           window.karaokeAPI.getSettings(),
           window.karaokeAPI.getVolumes(),
-          window.karaokeAPI.getCurrentSession(),
           window.karaokeAPI.getPublicWindowStatus(),
         ]);
 
@@ -244,6 +252,7 @@ export const App: React.FC = () => {
           setMasterMuted(Boolean(settingsRes.data.masterMuted));
         }
 
+        let hasCustomBg = false;
         if (volumesRes.success && volumesRes.data) {
           const v = volumesRes.data;
           setVolumesStore(v);
@@ -251,26 +260,30 @@ export const App: React.FC = () => {
           setAmbientVolume(v.ambientVolume);
           setMasterVolume(v.masterVolume);
           setApplauseVolume(v.applauseVolume);
-          setAutoKaraokeEnabled(v.autoKaraokeEnabled);
-          setAutoKaraokeDelaySec(v.autoKaraokeDelaySec);
-          setPublicOverlay((prev) => ({
-            ...prev,
-            hasCustomBackground: Boolean(v.publicBackgroundPath),
-            backgroundVersion: Date.now(),
-          }));
+          setAutoKaraokeEnabled(true);
+          setAutoKaraokeDelaySec(v.autoKaraokeDelaySec > 0 ? v.autoKaraokeDelaySec : 20);
+          hasCustomBg = Boolean(v.publicBackgroundPath);
         }
 
-        if (sessionRes.success && sessionRes.data) {
-          setCurrentSession(sessionRes.data);
-          await refreshQueue(sessionRes.data.id);
-          await refreshSingers(sessionRes.data.id);
-        } else {
-          // Abrir sesión por defecto para que la cola esté lista de inmediato sin fricción
-          const opened = await window.karaokeAPI.openSession('Katakana Karaoke');
-          if (opened.success) {
-            setCurrentSession(opened.data);
-          }
-        }
+        // Estado inicial 100% limpio: sin sesión cargada, cola vacía y sin reproducción
+        setCurrentSession(null);
+        setQueue([]);
+        setSingers([]);
+        setPreparedTrack(null);
+        setPlaybackState('IDLE');
+
+        const initialOverlay: PublicOverlayStateDTO = {
+          mode: 'IDLE',
+          sessionActive: false,
+          countdownSec: null,
+          singerName: null,
+          songTitle: null,
+          quickMessage: null,
+          hasCustomBackground: hasCustomBg,
+          backgroundVersion: Date.now(),
+        };
+        setPublicOverlay(initialOverlay);
+        window.karaokeAPI.broadcastPublicOverlay(initialOverlay).catch(() => {});
 
         if (pubRes.success && pubRes.data) {
           setIsPublicScreenOpen(pubRes.data.isOpen);
@@ -302,8 +315,14 @@ export const App: React.FC = () => {
         });
 
         window.karaokeAPI.onQueueUpdated((payload) => {
-          if (payload && Array.isArray(payload.items)) {
+          if (
+            payload &&
+            Array.isArray(payload.items) &&
+            currentSessionRef.current &&
+            payload.sessionId === currentSessionRef.current.id
+          ) {
             setQueue(payload.items);
+            queueRef.current = payload.items;
           }
         });
 
@@ -323,6 +342,88 @@ export const App: React.FC = () => {
       stopAllEffects();
     };
   }, [clearCountdownTimer, showNotice]);
+
+  // Iniciar una nueva sesión limpia:
+  // - Limpia la cola y el reproductor
+  // - Muestra "Solicita tu canción" en la pantalla en miniatura y en la pantalla pública con el fondo general
+  // - Inicia automáticamente la música de fondo (Música Ambiente MP3)
+  const handleStartSession = useCallback(async (): Promise<SessionDTO | null> => {
+    if (!window.karaokeAPI) return null;
+
+    clearCountdownTimer();
+    stopAllEffects();
+    setIsApplauseActive(false);
+    setIsAnyEffectActive(false);
+    setKaraokeStopSignal((n) => n + 1);
+    setPreparedTrack(null);
+    setPlaybackState('IDLE');
+    await window.karaokeAPI.sendPlayerCommand({ command: 'STOP' }).catch(() => {});
+
+    const res = await window.karaokeAPI.openSession('Katakana Karaoke');
+    if (res.success) {
+      setCurrentSession(res.data);
+      currentSessionRef.current = res.data;
+      setQueue([]);
+      queueRef.current = [];
+      setSingers([]);
+      setAutoKaraokeEnabled(true);
+
+      // Mostrar "Solicita tu canción" usando el fondo general en miniatura y pantalla pública
+      broadcastOverlayState({
+        sessionActive: true,
+        mode: 'REQUEST_SONG',
+        countdownSec: null,
+        singerName: null,
+        songTitle: null,
+      });
+
+      // Hacer sonar automáticamente la música de ambiente de fondo
+      setAmbientAutoStartSignal((n) => n + 1);
+
+      showNotice(
+        'Sesión iniciada: "Solicita tu canción" en pantallas y música de ambiente sonando.',
+      );
+      return res.data;
+    }
+
+    showNotice('No se pudo iniciar la sesión.', 'error');
+    return null;
+  }, [broadcastOverlayState, clearCountdownTimer, showNotice]);
+
+  // Cerrar sesión actual y dejar la consola completamente limpia
+  const handleCloseSession = useCallback(async () => {
+    if (!window.karaokeAPI) return;
+    clearCountdownTimer();
+    stopAllEffects();
+    setIsApplauseActive(false);
+    setIsAnyEffectActive(false);
+    setAmbientForceStopSignal((n) => n + 1);
+    setKaraokeStopSignal((n) => n + 1);
+    setPreparedTrack(null);
+    setPlaybackState('IDLE');
+    await window.karaokeAPI.sendPlayerCommand({ command: 'STOP' }).catch(() => {});
+
+    if (currentSessionRef.current) {
+      await window.karaokeAPI.closeSession(currentSessionRef.current.id).catch(() => {});
+    }
+
+    setCurrentSession(null);
+    currentSessionRef.current = null;
+    setQueue([]);
+    queueRef.current = [];
+    setSingers([]);
+
+    broadcastOverlayState({
+      sessionActive: false,
+      mode: 'IDLE',
+      countdownSec: null,
+      singerName: null,
+      songTitle: null,
+      quickMessage: null,
+    });
+
+    showNotice('Sesión finalizada. Consola limpia.');
+  }, [broadcastOverlayState, clearCountdownTimer, showNotice]);
 
   // Obtener siguiente turno pendiente EXCLUSIVAMENTE de la Cola (Activos)
   const getNextPendingQueueItem = useCallback((items: QueueItemDTO[], excludeId?: string | null) => {
@@ -349,14 +450,13 @@ export const App: React.FC = () => {
     return store.karaokeDefaultVolume;
   }, []);
 
-  // Lanzar un turno específico de la Cola (AUDIO ESTRICTAMENTE SECUENCIAL: para MP3 y efectos antes de arrancar Karaoke)
-  const handleLaunchQueueItem = useCallback(
+  // Reproducir físicamente un turno de la Cola tras completarse el conteo regresivo (o al pulsar "Iniciar ya")
+  const executeImmediateKaraokeLaunch = useCallback(
     async (item: QueueItemDTO) => {
       if (!window.karaokeAPI) return;
-      manualStopGuardRef.current = false;
       clearCountdownTimer();
 
-      // 1. Detener por completo MP3 de ambiente y cualquier efecto (SIN crossfade / SIN solapamiento)
+      // 1. Detener por completo MP3 de ambiente y cualquier efecto para que suene solo el Karaoke
       stopAllEffects();
       setIsApplauseActive(false);
       setIsAnyEffectActive(false);
@@ -370,11 +470,14 @@ export const App: React.FC = () => {
       if (res.success) {
         const appliedVol = applyVolumeForTrack(res.data.mediaAssetId);
         setPreparedTrack(res.data);
+        preparedTrackRef.current = res.data;
         setPitchSemitones(res.data.keyShift || 0);
         setPlaybackSpeed(1);
         setPlaybackState('PLAYING');
+        playbackStateRef.current = 'PLAYING';
 
         broadcastOverlayState({
+          sessionActive: true,
           mode: 'IDLE',
           countdownSec: null,
           singerName: res.data.singerName,
@@ -393,136 +496,188 @@ export const App: React.FC = () => {
     [applyVolumeForTrack, broadcastOverlayState, clearCountdownTimer, showNotice],
   );
 
-  // Iniciar cuenta regresiva de Auto Karaoke (SOLO COLA; jamás del catálogo)
-  const startAutoKaraokeCountdown = useCallback(
+  // Iniciar el conteo regresivo en la Pantalla en Miniatura y en la Pantalla Pública usando el fondo general,
+  // manteniendo la música de ambiente de fondo mientras corre el contador hasta 0.
+  const startKaraokeCountdown = useCallback(
     (targetItem: QueueItemDTO) => {
-      clearCountdownTimer();
-      const delay = autoKaraokeDelayRef.current;
-
-      if (delay <= 0) {
-        handleLaunchQueueItem(targetItem);
+      // Nunca interrumpir si ya hay un karaoke reproduciéndose
+      if (
+        preparedTrackRef.current &&
+        (playbackStateRef.current === 'PLAYING' || playbackStateRef.current === 'PAUSED')
+      ) {
+        showNotice(
+          'Hay una canción de karaoke en curso. Espera a que termine o pulsa Stop para detenerla manualmente.',
+        );
         return;
       }
 
+      clearCountdownTimer();
+      countdownTargetItemRef.current = targetItem;
+
+      // Asegurar que la música de ambiente esté sonando mientras corre el conteo regresivo con el aviso en pantalla
+      setAmbientAutoStartSignal((n) => n + 1);
+
+      const configuredDelay = autoKaraokeDelayRef.current;
+      const delay = configuredDelay > 0 ? configuredDelay : 5;
+
       let remaining = delay;
       setCountdownRemainingSec(remaining);
+      const singerLabel = targetItem.singer?.displayName || 'Cantante';
+      const titleLabel = cleanDisplayTitle(targetItem.song?.title);
+
       broadcastOverlayState({
+        sessionActive: true,
         mode: 'COUNTDOWN',
         countdownSec: remaining,
-        singerName: targetItem.singer?.displayName || 'Cantante',
-        songTitle: cleanDisplayTitle(targetItem.song?.title),
+        singerName: singerLabel,
+        songTitle: titleLabel,
       });
+
+      showNotice(
+        `Conteo regresivo (${remaining}s): Próximo en escenario ${singerLabel} — ${titleLabel}`,
+      );
 
       countdownTimerRef.current = setInterval(() => {
         remaining -= 1;
         if (remaining <= 0) {
+          const itemToLaunch = countdownTargetItemRef.current || targetItem;
           clearCountdownTimer();
           // Verificar que el turno siga activo en la cola antes de lanzarlo
-          const latestNext = getNextPendingQueueItem(queueRef.current);
-          if (latestNext && autoKaraokeEnabledRef.current) {
-            handleLaunchQueueItem(latestNext);
+          const stillInQueue = queueRef.current.find(
+            (q) =>
+              q.id === itemToLaunch.id &&
+              !['COMPLETED', 'CANCELLED', 'SKIPPED', 'FAILED'].includes(q.status),
+          );
+          const fallbackNext = getNextPendingQueueItem(queueRef.current);
+          const finalTarget = stillInQueue || fallbackNext;
+
+          if (finalTarget) {
+            executeImmediateKaraokeLaunch(finalTarget);
           } else {
-            broadcastOverlayState({ mode: 'IDLE', countdownSec: null });
+            broadcastOverlayState({
+              sessionActive: Boolean(currentSessionRef.current),
+              mode: 'REQUEST_SONG',
+              countdownSec: null,
+              singerName: null,
+              songTitle: null,
+            });
           }
         } else {
           setCountdownRemainingSec(remaining);
           broadcastOverlayState({
+            sessionActive: true,
             mode: 'COUNTDOWN',
             countdownSec: remaining,
-            singerName: targetItem.singer?.displayName || 'Cantante',
-            songTitle: cleanDisplayTitle(targetItem.song?.title),
+            singerName: singerLabel,
+            songTitle: titleLabel,
           });
         }
       }, 1000);
     },
-    [broadcastOverlayState, clearCountdownTimer, getNextPendingQueueItem, handleLaunchQueueItem],
+    [
+      broadcastOverlayState,
+      clearCountdownTimer,
+      executeImmediateKaraokeLaunch,
+      getNextPendingQueueItem,
+      showNotice,
+    ],
   );
 
-  // Si Auto Karaoke está ON, no hubo parada manual reciente, no hay karaoke ni aplausos sonando,
-  // no hay countdown corriendo, y hay un turno en la cola -> iniciar cuenta regresiva automáticamente
-  useEffect(() => {
-    if (
-      autoKaraokeEnabled &&
-      !manualStopGuardRef.current &&
-      playbackState !== 'PLAYING' &&
-      playbackState !== 'PAUSED' &&
-      playbackState !== 'STOPPED' &&
-      !isApplauseActive &&
-      countdownRemainingSec === null &&
-      nextQueuedItem
-    ) {
-      startAutoKaraokeCountdown(nextQueuedItem);
-    }
-  }, [
-    autoKaraokeEnabled,
-    playbackState,
-    isApplauseActive,
-    countdownRemainingSec,
-    nextQueuedItem,
-    startAutoKaraokeCountdown,
-  ]);
+  // Acción cuando el administrador pulsa "▶ Lanzar" en una fila de la Cola
+  const handleLaunchQueueItem = useCallback(
+    async (item: QueueItemDTO) => {
+      if (
+        preparedTrackRef.current &&
+        (playbackStateRef.current === 'PLAYING' || playbackStateRef.current === 'PAUSED')
+      ) {
+        showNotice(
+          'No se puede interrumpir el karaoke actual automáticamente. Pulsa Stop primero si deseas detenerlo manualmente.',
+        );
+        return;
+      }
+
+      // Si ya estaba corriendo el conteo para esta canción y vuelve a pulsar Lanzar, iniciarla de inmediato
+      if (
+        countdownTimerRef.current &&
+        countdownTargetItemRef.current &&
+        countdownTargetItemRef.current.id === item.id
+      ) {
+        await executeImmediateKaraokeLaunch(item);
+        return;
+      }
+
+      // Comenzar con el conteo regresivo de los segundos en miniatura y pantalla pública
+      setAutoKaraokeEnabled(true);
+      startKaraokeCountdown(item);
+    },
+    [executeImmediateKaraokeLaunch, showNotice, startKaraokeCountdown],
+  );
 
   // Al terminar un Karaoke de forma natural:
-  // 1) Detener Karaoke por completo -> 2) Reproducir Aplausos SOLO -> 3) Detener Aplausos -> 4) Iniciar MP3 de golpe + Cuenta regresiva si hay Cola y Auto Karaoke ON
+  // 1) Marcar canción como completada y limpiar vídeo de karaoke
+  // 2) Hacer sonar de inmediato la Música de Ambiente MP3
+  // 3) Si hay siguiente canción en la Cola: mostrar el aviso de la siguiente canción + conteo regresivo
+  //    en la pantalla miniatura y en la pantalla pública usando el fondo general.
+  // 4) Si no hay más canciones en la Cola: mostrar "Solicita tu canción" usando el fondo general.
   const handleNativeTrackEnded = useCallback(
     async (finishedTrack: PlayerPrepareResult) => {
       if (!window.karaokeAPI) return;
       const finishedTitle = cleanDisplayTitle(finishedTrack.title);
       const finishedSinger = finishedTrack.singerName;
 
-      // 1) Detener Karaoke por completo
+      // 1) Registrar fin de canción en base de datos y volver pantallas al fondo general
       await window.karaokeAPI.reportPlayerEnded(finishedTrack.queueItemId);
       setPreparedTrack(null);
+      preparedTrackRef.current = null;
       setPlaybackState('ENDED');
+      playbackStateRef.current = 'ENDED';
 
-      if (currentSession) {
-        await refreshQueue(currentSession.id);
+      let updatedQueue: QueueItemDTO[] = queueRef.current;
+      if (currentSessionRef.current) {
+        updatedQueue = await refreshQueue(currentSessionRef.current.id);
       }
 
-      // 2) Reproducir Aplausos SOLO a su volumen memorizado (sin MP3 superpuesto)
-      const effApplause = masterMuted
-        ? 0
-        : Math.max(0, Math.min(1, (applauseVolume / 100) * (masterVolume / 100)));
+      // 2) Activar de inmediato la Música de Ambiente MP3
+      setAmbientAutoStartSignal((n) => n + 1);
 
-      setIsApplauseActive(true);
-      setIsAnyEffectActive(true);
-      showNotice(`👏 ¡Aplausos para ${finishedSinger} — ${finishedTitle}!`);
-
-      playApplause(6000, effApplause, () => {
-        // 3) Aplausos terminaron por completo -> 4) Iniciar Música de Ambiente MP3 de golpe
-        setIsApplauseActive(false);
-        setIsAnyEffectActive(false);
-        setAmbientAutoStartSignal((n) => n + 1);
-
-        // Si Auto Karaoke está ON y hay turnos en la Cola (NUNCA del catálogo), iniciar cuenta regresiva
-        const nextFromQueue = getNextPendingQueueItem(queueRef.current);
-        if (autoKaraokeEnabledRef.current && nextFromQueue) {
-          startAutoKaraokeCountdown(nextFromQueue);
-        } else {
-          broadcastOverlayState({
-            mode: 'IDLE',
-            countdownSec: null,
-            singerName: nextFromQueue?.singer?.displayName || null,
-            songTitle: nextFromQueue ? cleanDisplayTitle(nextFromQueue.song?.title) : null,
-          });
-        }
-      });
+      // 3) Comprobar si hay siguiente canción en la Cola
+      const nextFromQueue = getNextPendingQueueItem(updatedQueue, finishedTrack.queueItemId);
+      if (nextFromQueue && autoKaraokeEnabledRef.current) {
+        startKaraokeCountdown(nextFromQueue);
+      } else {
+        broadcastOverlayState({
+          sessionActive: true,
+          mode: 'REQUEST_SONG',
+          countdownSec: null,
+          singerName: null,
+          songTitle: null,
+        });
+        showNotice(
+          `Finalizó ${finishedSinger} — ${finishedTitle}. Música de ambiente sonando ("Solicita tu canción").`,
+        );
+      }
     },
-    [
-      applauseVolume,
-      broadcastOverlayState,
-      currentSession,
-      getNextPendingQueueItem,
-      masterMuted,
-      masterVolume,
-      showNotice,
-      startAutoKaraokeCountdown,
-    ],
+    [broadcastOverlayState, getNextPendingQueueItem, showNotice, startKaraokeCountdown],
   );
 
-  // Reproducción directa desde el Catálogo (Modal)
+  // Reproducción directa desde el Catálogo (Modal "Play ya")
   const handlePlayNowFromCatalog = async (song: SongDTO) => {
     if (!window.karaokeAPI) return;
+    if (
+      preparedTrackRef.current &&
+      (playbackStateRef.current === 'PLAYING' || playbackStateRef.current === 'PAUSED')
+    ) {
+      showNotice(
+        'Hay un karaoke en reproducción. Pulsa Stop primero si deseas detenerlo manualmente.',
+        'error',
+      );
+      return;
+    }
+
+    if (!currentSessionRef.current) {
+      await handleStartSession();
+    }
+
     clearCountdownTimer();
     stopAllEffects();
     setIsApplauseActive(false);
@@ -531,16 +686,19 @@ export const App: React.FC = () => {
 
     const res = await window.karaokeAPI.previewAsset({
       mediaAssetId: song.mediaAssetId,
-      sessionId: currentSession?.id ?? null,
+      sessionId: currentSessionRef.current?.id ?? null,
     });
 
     if (res.success) {
       applyVolumeForTrack(res.data.mediaAssetId);
       setPreparedTrack(res.data);
+      preparedTrackRef.current = res.data;
       setPitchSemitones(0);
       setPlaybackSpeed(1);
       setPlaybackState('PLAYING');
+      playbackStateRef.current = 'PLAYING';
       broadcastOverlayState({
+        sessionActive: true,
         mode: 'IDLE',
         countdownSec: null,
         singerName: 'Katakana Karaoke',
@@ -555,26 +713,57 @@ export const App: React.FC = () => {
 
   // Botón "Lanzar / Iniciar" central
   const handleLaunchNextOrPlay = useCallback(async () => {
-    if (nextQueuedItem && (!preparedTrack || playbackState === 'IDLE' || playbackState === 'ENDED' || playbackState === 'STOPPED')) {
-      await handleLaunchQueueItem(nextQueuedItem);
+    // Si hay un karaoke reproduciéndose, no interrumpirlo
+    if (preparedTrackRef.current && playbackStateRef.current === 'PLAYING') {
+      showNotice('El karaoke está en curso. Pulsa Stop si deseas detenerlo manualmente.');
       return;
     }
-    if (preparedTrack && playbackState !== 'PLAYING') {
+
+    // Si el karaoke actual está en pausa, reanudarlo
+    if (preparedTrackRef.current && playbackStateRef.current === 'PAUSED') {
       clearCountdownTimer();
       stopAllEffects();
       setIsApplauseActive(false);
       setIsAnyEffectActive(false);
       setAmbientForceStopSignal((n) => n + 1);
       setPlaybackState('PLAYING');
+      playbackStateRef.current = 'PLAYING';
       await window.karaokeAPI?.sendPlayerCommand({ command: 'PLAY' });
       return;
     }
+
+    // Si ya está corriendo el conteo regresivo, pulsar "Iniciar Ya" salta los segundos restantes y lanza el karaoke
+    if (countdownRemainingSec !== null) {
+      const target = countdownTargetItemRef.current || nextQueuedItem;
+      if (target) {
+        await executeImmediateKaraokeLaunch(target);
+        return;
+      }
+    }
+
+    // Si hay canciones esperando en la cola, comenzar el conteo regresivo en las pantallas
     if (nextQueuedItem) {
-      await handleLaunchQueueItem(nextQueuedItem);
+      setAutoKaraokeEnabled(true);
+      startKaraokeCountdown(nextQueuedItem);
       return;
     }
+
+    // Si aún no se ha iniciado sesión, iniciarla
+    if (!currentSessionRef.current) {
+      await handleStartSession();
+      return;
+    }
+
     showNotice('No hay turnos en la Cola. Abre el Catálogo (F2) para agregar una canción.');
-  }, [clearCountdownTimer, handleLaunchQueueItem, nextQueuedItem, playbackState, preparedTrack, showNotice]);
+  }, [
+    clearCountdownTimer,
+    countdownRemainingSec,
+    executeImmediateKaraokeLaunch,
+    handleStartSession,
+    nextQueuedItem,
+    showNotice,
+    startKaraokeCountdown,
+  ]);
 
   const handleTogglePlayPause = useCallback(async () => {
     if (!window.karaokeAPI) return;
@@ -584,6 +773,7 @@ export const App: React.FC = () => {
     }
     if (playbackState === 'PLAYING') {
       setPlaybackState('PAUSED');
+      playbackStateRef.current = 'PAUSED';
       await window.karaokeAPI.sendPlayerCommand({ command: 'PAUSE' });
       showNotice('Karaoke en pausa.');
     } else {
@@ -592,31 +782,49 @@ export const App: React.FC = () => {
       setIsAnyEffectActive(false);
       setAmbientForceStopSignal((n) => n + 1);
       setPlaybackState('PLAYING');
+      playbackStateRef.current = 'PLAYING';
       await window.karaokeAPI.sendPlayerCommand({ command: 'PLAY' });
       showNotice(`Reanudado: ${cleanDisplayTitle(preparedTrack.title)}`);
     }
     if (currentSession) await refreshQueue(currentSession.id);
   }, [currentSession, handleLaunchNextOrPlay, playbackState, preparedTrack, showNotice]);
 
+  // Parada manual por el administrador
   const handleStopKaraoke = useCallback(async () => {
     if (!window.karaokeAPI) return;
-    manualStopGuardRef.current = true;
     clearCountdownTimer();
     stopAllEffects();
     setIsApplauseActive(false);
     setIsAnyEffectActive(false);
-    setAmbientForceStopSignal((n) => n + 1);
     setKaraokeStopSignal((n) => n + 1);
     setPreparedTrack(null);
+    preparedTrackRef.current = null;
     setPlaybackState('STOPPED');
-    broadcastOverlayState({ mode: 'IDLE', countdownSec: null });
+    playbackStateRef.current = 'STOPPED';
+
     await window.karaokeAPI.sendPlayerCommand({ command: 'STOP' });
-    showNotice('Reproducción detenida por completo.');
-    if (currentSession) await refreshQueue(currentSession.id);
-  }, [broadcastOverlayState, clearCountdownTimer, currentSession, showNotice]);
+
+    // Si hay sesión activa, volver las pantallas a "Solicita tu canción" con el fondo general y música de ambiente
+    if (currentSessionRef.current) {
+      broadcastOverlayState({
+        sessionActive: true,
+        mode: 'REQUEST_SONG',
+        countdownSec: null,
+        singerName: null,
+        songTitle: null,
+      });
+      setAmbientAutoStartSignal((n) => n + 1);
+      await refreshQueue(currentSessionRef.current.id);
+    } else {
+      broadcastOverlayState({ mode: 'IDLE', countdownSec: null });
+    }
+
+    showNotice(
+      'Karaoke detenido manualmente. Música de ambiente activa (pulsa "Lanzar / Iniciar" para el siguiente conteo).',
+    );
+  }, [broadcastOverlayState, clearCountdownTimer, showNotice]);
 
   const handleEmergencyStop = useCallback(async () => {
-    manualStopGuardRef.current = true;
     clearCountdownTimer();
     stopAllEffects();
     setIsApplauseActive(false);
@@ -624,14 +832,22 @@ export const App: React.FC = () => {
     setAmbientForceStopSignal((n) => n + 1);
     setKaraokeStopSignal((n) => n + 1);
     setPlaybackState('STOPPED');
+    playbackStateRef.current = 'STOPPED';
     setPreparedTrack(null);
-    broadcastOverlayState({ mode: 'IDLE', countdownSec: null });
+    preparedTrackRef.current = null;
+    broadcastOverlayState({
+      sessionActive: Boolean(currentSessionRef.current),
+      mode: currentSessionRef.current ? 'REQUEST_SONG' : 'IDLE',
+      countdownSec: null,
+      singerName: null,
+      songTitle: null,
+    });
     if (window.karaokeAPI) {
       await window.karaokeAPI.emergencyStop();
-      if (currentSession) await refreshQueue(currentSession.id);
+      if (currentSessionRef.current) await refreshQueue(currentSessionRef.current.id);
     }
     showNotice('¡PARADA DE EMERGENCIA! Todo el audio y vídeo ha sido cortado.', 'error');
-  }, [broadcastOverlayState, clearCountdownTimer, currentSession, showNotice]);
+  }, [broadcastOverlayState, clearCountdownTimer, showNotice]);
 
   // Atajos globales: F2 / Ctrl+B -> Abrir Catálogo, Espacio -> Play/Pausa, Esc / F12 -> Parada de Emergencia
   useEffect(() => {
@@ -649,7 +865,14 @@ export const App: React.FC = () => {
       }
 
       if (e.code === 'Escape') {
-        if (isCatalogModalOpen || isSettingsOpen || isFolderManagerOpen || isQuickMessageOpen || editingQueueItem || editingSong) {
+        if (
+          isCatalogModalOpen ||
+          isSettingsOpen ||
+          isFolderManagerOpen ||
+          isQuickMessageOpen ||
+          editingQueueItem ||
+          editingSong
+        ) {
           setIsCatalogModalOpen(false);
           setIsSettingsOpen(false);
           setIsFolderManagerOpen(false);
@@ -733,17 +956,22 @@ export const App: React.FC = () => {
   };
 
   const handleToggleAutoKaraoke = (enabled: boolean) => {
-    if (enabled) manualStopGuardRef.current = false;
     setAutoKaraokeEnabled(enabled);
     window.karaokeAPI?.saveGlobalVolumes({ autoKaraokeEnabled: enabled }).then((res) => {
       if (res.success) setVolumesStore(res.data);
     });
     if (!enabled) {
       clearCountdownTimer();
-      broadcastOverlayState({ mode: 'IDLE', countdownSec: null });
-      showNotice('Auto Karaoke desactivado.');
+      broadcastOverlayState({
+        sessionActive: Boolean(currentSessionRef.current),
+        mode: currentSessionRef.current ? 'REQUEST_SONG' : 'IDLE',
+        countdownSec: null,
+        singerName: null,
+        songTitle: null,
+      });
+      showNotice('Auto Karaoke en pausa.');
     } else {
-      showNotice('Auto Karaoke activado (solo canciones de la Cola).');
+      showNotice('Auto Karaoke activo (avanzará automáticamente al terminar cada canción).');
     }
   };
 
@@ -755,13 +983,17 @@ export const App: React.FC = () => {
   };
 
   // Encolar canción desde el Modal de Catálogo (con Cantante + Tono -6..+6)
+  // IMPORTANTE: Al colocar canciones en la cola NO se reproducen de inmediato; esperan a que el administrador pulse Lanzar/Iniciar.
   const handleEnqueueWithSingerAndPitch = async (
     song: SongDTO,
     singerName: string,
     keyShift: number,
   ) => {
     if (!window.karaokeAPI) return;
-    const session = await ensureActiveSession();
+    let session = currentSessionRef.current;
+    if (!session) {
+      session = await handleStartSession();
+    }
     if (!session) {
       showNotice('No se pudo abrir sesión para encolar.', 'error');
       return;
@@ -793,11 +1025,10 @@ export const App: React.FC = () => {
     });
 
     if (addRes.success) {
-      manualStopGuardRef.current = false;
-      showNotice(
-        `Agregado a la Cola (#${addRes.data.position}): ${singer.displayName} — ${cleanDisplayTitle(song.title)} (Tono ${keyShift >= 0 ? `+${keyShift}` : keyShift})`,
-      );
       await refreshQueue(session.id);
+      showNotice(
+        `En cola (#${addRes.data.position}): ${singer.displayName} — ${cleanDisplayTitle(song.title)}. Pulsa "Lanzar / Iniciar" cuando desees comenzar el conteo.`,
+      );
     } else {
       showNotice(addRes.error.message, 'error');
     }
@@ -823,7 +1054,9 @@ export const App: React.FC = () => {
         await refreshQueue(currentSession.id);
         await refreshSingers(currentSession.id);
       }
-      showNotice(`Turno actualizado: ${singerName} (Tono ${keyShift >= 0 ? `+${keyShift}` : keyShift})`);
+      showNotice(
+        `Turno actualizado: ${singerName} (Tono ${keyShift >= 0 ? `+${keyShift}` : keyShift})`,
+      );
     }
   };
 
@@ -844,18 +1077,35 @@ export const App: React.FC = () => {
 
   const handleRemoveQueueItem = async (item: QueueItemDTO) => {
     if (!window.karaokeAPI || !currentSession) return;
-    // Si el turno que se quita es el que está sonando o cargado, detener la reproducción limpiamente primero
+    if (countdownTargetItemRef.current?.id === item.id) {
+      clearCountdownTimer();
+      broadcastOverlayState({
+        sessionActive: true,
+        mode: 'REQUEST_SONG',
+        countdownSec: null,
+        singerName: null,
+        songTitle: null,
+      });
+    }
     if (preparedTrack?.queueItemId === item.id || item.status === 'PLAYING') {
-      manualStopGuardRef.current = true;
       clearCountdownTimer();
       stopAllEffects();
       setIsApplauseActive(false);
       setIsAnyEffectActive(false);
       setKaraokeStopSignal((n) => n + 1);
       setPreparedTrack(null);
+      preparedTrackRef.current = null;
       setPlaybackState('STOPPED');
-      broadcastOverlayState({ mode: 'IDLE', countdownSec: null });
+      playbackStateRef.current = 'STOPPED';
+      broadcastOverlayState({
+        sessionActive: true,
+        mode: 'REQUEST_SONG',
+        countdownSec: null,
+        singerName: null,
+        songTitle: null,
+      });
       await window.karaokeAPI.sendPlayerCommand({ command: 'STOP' });
+      setAmbientAutoStartSignal((n) => n + 1);
     }
     const res = await window.karaokeAPI.transitionQueue({
       queueItemId: item.id,
@@ -1012,6 +1262,7 @@ export const App: React.FC = () => {
       ? volumesStore.songs[preparedTrack.mediaAssetId]!
       : null;
 
+  // La música de ambiente solo se bloquea cuando hay un karaoke activamente en reproducción o un efecto manual
   const isAudioBlockedForAmbient = playbackState === 'PLAYING' || isAnyEffectActive;
 
   return (
@@ -1024,6 +1275,52 @@ export const App: React.FC = () => {
           </div>
           <span>Katakana Karaoke</span>
           <span className="katakana-brand-pill">KARAOKE TOTAL</span>
+
+          {/* Control explícito de Sesión en la Barra Superior */}
+          {!currentSession ? (
+            <button
+              type="button"
+              className="btn btn-surf btn-compact"
+              onClick={handleStartSession}
+              style={{
+                marginLeft: '8px',
+                minHeight: '36px',
+                fontSize: '15px',
+                fontWeight: 900,
+                padding: '0 14px',
+              }}
+              title="Iniciar sesión limpia: activa 'Solicita tu canción' en pantallas y música de ambiente"
+            >
+              <Power size={17} />
+              Iniciar Sesión
+            </button>
+          ) : (
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', marginLeft: '8px' }}>
+              <span
+                className="pill"
+                style={{
+                  background: 'linear-gradient(180deg, #2ef2e2 0%, #00b8aa 100%)',
+                  color: '#061B19',
+                  border: '1px solid #9ffcf4',
+                  fontSize: '12px',
+                  fontWeight: 900,
+                  padding: '4px 10px',
+                }}
+              >
+                ● SESIÓN ACTIVA
+              </span>
+              <button
+                type="button"
+                className="btn btn-dark btn-compact"
+                onClick={handleCloseSession}
+                style={{ minHeight: '34px', fontSize: '13px', padding: '0 10px' }}
+                title="Cerrar sesión actual y limpiar toda la cola"
+              >
+                <RotateCcw size={14} />
+                Cerrar Sesión
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Estado operativo en vivo */}
@@ -1039,7 +1336,7 @@ export const App: React.FC = () => {
             overflow: 'hidden',
             textOverflow: 'ellipsis',
             whiteSpace: 'nowrap',
-            maxWidth: '40vw',
+            maxWidth: '34vw',
           }}
         >
           {notification.type === 'error' ? (
@@ -1110,10 +1407,13 @@ export const App: React.FC = () => {
 
         {/* COLUMNA CENTRAL (PROTAGONISTA): MONITOR DE KARAOKE Y CONTROLES */}
         <CenterMonitorColumn
+          isSessionActive={Boolean(currentSession)}
+          onStartSession={async () => {
+            await handleStartSession();
+          }}
           preparedTrack={preparedTrack}
           playbackState={playbackState}
           stopSignal={karaokeStopSignal}
-          onPlaybackStateChange={setPlaybackState}
           onNativeTrackEnded={handleNativeTrackEnded}
           onLaunchNextOrPlay={handleLaunchNextOrPlay}
           onTogglePlayPause={handleTogglePlayPause}
@@ -1153,12 +1453,27 @@ export const App: React.FC = () => {
           onToggleAutoKaraoke={handleToggleAutoKaraoke}
           onChangeAutoKaraokeDelay={handleChangeAutoKaraokeDelay}
           onStartCountdownNow={async () => {
-            if (nextQueuedItem) await handleLaunchQueueItem(nextQueuedItem);
+            if (!nextQueuedItem) return;
+            if (countdownRemainingSec !== null) {
+              // Si el conteo ya está corriendo, "Iniciar ya" salta los segundos restantes y arranca el vídeo
+              await executeImmediateKaraokeLaunch(
+                countdownTargetItemRef.current || nextQueuedItem,
+              );
+            } else {
+              // Si aún no ha empezado el conteo, iniciarlo en pantallas
+              startKaraokeCountdown(nextQueuedItem);
+            }
           }}
           onCancelCountdown={() => {
             clearCountdownTimer();
-            broadcastOverlayState({ mode: 'IDLE', countdownSec: null });
-            showNotice('Cuenta regresiva cancelada.');
+            broadcastOverlayState({
+              sessionActive: Boolean(currentSessionRef.current),
+              mode: currentSessionRef.current ? 'REQUEST_SONG' : 'IDLE',
+              countdownSec: null,
+              singerName: null,
+              songTitle: null,
+            });
+            showNotice('Conteo regresivo cancelado. Pantallas en "Solicita tu canción".');
           }}
           masterVolume={masterVolume}
           masterMuted={masterMuted}
@@ -1217,7 +1532,9 @@ export const App: React.FC = () => {
         onClose={() => setIsQuickMessageOpen(false)}
         onSendMessage={async (msg) => {
           broadcastOverlayState({ quickMessage: msg });
-          showNotice(msg ? `Mensaje en pantalla: "${msg}"` : 'Mensaje quitado de la Pantalla Pública.');
+          showNotice(
+            msg ? `Mensaje en pantalla: "${msg}"` : 'Mensaje quitado de la Pantalla Pública.',
+          );
         }}
       />
 
@@ -1302,9 +1619,8 @@ export const App: React.FC = () => {
         scanProgress={scanProgress}
         onSaveSettings={handleSaveSettings}
         onSelectFolder={handleSelectFolder}
-        onOpenSession={async (name) => {
-          const res = await window.karaokeAPI?.openSession(name);
-          if (res?.success) setCurrentSession(res.data);
+        onOpenSession={async () => {
+          await handleStartSession();
         }}
       />
     </div>

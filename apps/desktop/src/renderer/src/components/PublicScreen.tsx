@@ -182,19 +182,13 @@ export const PublicScreen: React.FC = () => {
     : './assets/fondo_katakana.png';
 
   const activeSongTitleClean = cleanDisplayTitle(currentQueueItem?.song?.title);
-  const displaySinger =
-    overlay.singerName ||
-    (playbackState === 'READY' ? currentQueueItem?.singer?.displayName : null) ||
-    nextQueueItem?.singer?.displayName ||
-    null;
-  const displaySongTitle = cleanDisplayTitle(
-    overlay.songTitle ||
-      (playbackState === 'READY' ? currentQueueItem?.song?.title : null) ||
-      nextQueueItem?.song?.title ||
-      '',
-  );
-
   const isCountdownActive = overlay.mode === 'COUNTDOWN' && overlay.countdownSec !== null;
+  const displaySinger = isCountdownActive
+    ? overlay.singerName || nextQueueItem?.singer?.displayName || null
+    : null;
+  const displaySongTitle = isCountdownActive
+    ? cleanDisplayTitle(overlay.songTitle || nextQueueItem?.song?.title || '')
+    : '';
 
   return (
     <div
@@ -496,14 +490,14 @@ export const PublicScreen: React.FC = () => {
               >
                 <div
                   style={{
-                    fontSize: 'clamp(36px, 4.8vw, 72px)',
-                    fontWeight: 800,
+                    fontSize: 'clamp(44px, 5.8vw, 88px)',
+                    fontWeight: 900,
                     color: '#FFFFFF',
                     textShadow: '0 5px 24px rgba(0, 0, 0, 0.95)',
                     lineHeight: 1.15,
                   }}
                 >
-                  ¡El escenario está listo!
+                  Solicita tu canción
                 </div>
                 <div
                   style={{
@@ -513,7 +507,7 @@ export const PublicScreen: React.FC = () => {
                     textShadow: '0 3px 16px rgba(0, 0, 0, 0.95)',
                   }}
                 >
-                  Pide tu canción y sube a cantar
+                  ¡El escenario de Katakana Karaoke está abierto!
                 </div>
               </div>
             )}

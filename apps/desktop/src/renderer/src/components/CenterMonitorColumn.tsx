@@ -13,18 +13,20 @@ import {
   Sparkles,
   Minus,
   Plus,
+  Power,
 } from 'lucide-react';
-import { PlaybackSnapshotDTO, PlaybackStatus, QueueItemDTO } from '@karaoke/contracts';
+import { PlaybackStatus, QueueItemDTO } from '@karaoke/contracts';
 import { PlayerPrepareResult, PublicOverlayStateDTO } from '../../../preload/types.js';
 import { audioMixerEngine } from '../utils/audio-mixer-engine.js';
 import { cleanDisplayTitle, formatTimeMMSS, formatCountdownMMSS } from '../utils/title-cleaner.js';
 import { Btn09 } from './ui/button-hover.js';
 
 export interface CenterMonitorColumnProps {
+  isSessionActive: boolean;
+  onStartSession: () => Promise<void>;
   preparedTrack: PlayerPrepareResult | null;
   playbackState: PlaybackStatus;
   stopSignal: number;
-  onPlaybackStateChange: (state: PlaybackStatus) => void;
   onNativeTrackEnded: (finishedTrack: PlayerPrepareResult) => Promise<void>;
   onLaunchNextOrPlay: () => Promise<void>;
   onTogglePlayPause: () => Promise<void>;
@@ -61,10 +63,11 @@ const AUDIO_ONLY_EXTENSIONS = new Set([
 ]);
 
 export const CenterMonitorColumn: React.FC<CenterMonitorColumnProps> = ({
+  isSessionActive,
+  onStartSession,
   preparedTrack,
   playbackState,
   stopSignal,
-  onPlaybackStateChange,
   onNativeTrackEnded,
   onLaunchNextOrPlay,
   onTogglePlayPause,
@@ -105,30 +108,7 @@ export const CenterMonitorColumn: React.FC<CenterMonitorColumnProps> = ({
     return Math.max(0, Math.min(1, (karaokeVolume / 100) * (masterVolume / 100)));
   }, [karaokeMuted, masterMuted, karaokeVolume, masterVolume]);
 
-  // Escuchar eventos globales de estado de reproducción (ej. STOP, PAUSE, PLAY, SEEK)
-  useEffect(() => {
-    if (!window.karaokeAPI) return;
-    const unsub = window.karaokeAPI.onPlayerStateChanged((snapshot: PlaybackSnapshotDTO) => {
-      onPlaybackStateChange(snapshot.state);
-      if (snapshot.durationMs) {
-        setDurationMs(snapshot.durationMs);
-      }
-      if (videoRef.current) {
-        if (snapshot.state === 'PLAYING' && videoRef.current.paused) {
-          videoRef.current.play().catch(() => {});
-        } else if (snapshot.state === 'PAUSED' && !videoRef.current.paused) {
-          videoRef.current.pause();
-        } else if (snapshot.state === 'STOPPED' || snapshot.state === 'IDLE' || snapshot.state === 'ENDED') {
-          videoRef.current.pause();
-          videoRef.current.currentTime = 0;
-          setCurrentTimeMs(0);
-        }
-      }
-    });
-    return unsub;
-  }, [onPlaybackStateChange]);
-
-  // Parada física inmediata del elemento <video> (garantiza que JAMÁS siga sonando tras pulsar Stop/Emergencia)
+  // Parada física inmediata del elemento <video> cuando el administrador pulsa Stop o Emergencia
   useEffect(() => {
     if (stopSignal > 0 && videoRef.current) {
       try {
@@ -139,16 +119,18 @@ export const CenterMonitorColumn: React.FC<CenterMonitorColumnProps> = ({
       } catch {
         // Ignorar
       }
+      lastReportedTimeRef.current = 0;
       setCurrentTimeMs(0);
       setDurationMs(0);
     }
   }, [stopSignal]);
 
-  // Cargar nueva pista en el monitor
+  // Cargar nueva pista en el monitor solo cuando cambia la pista preparada
   useEffect(() => {
     if (preparedTrack) {
       setDurationMs(preparedTrack.durationMs || 0);
       setCurrentTimeMs(0);
+      lastReportedTimeRef.current = 0;
       if (videoRef.current) {
         audioMixerEngine.registerKaraokeElement(videoRef.current);
         videoRef.current.currentTime = 0;
@@ -160,6 +142,7 @@ export const CenterMonitorColumn: React.FC<CenterMonitorColumnProps> = ({
         videoRef.current.removeAttribute('src');
         videoRef.current.load();
       }
+      lastReportedTimeRef.current = 0;
       setCurrentTimeMs(0);
       setDurationMs(0);
     }
@@ -183,23 +166,38 @@ export const CenterMonitorColumn: React.FC<CenterMonitorColumnProps> = ({
   useEffect(() => {
     if (videoRef.current) {
       videoRef.current.playbackRate = playbackSpeed;
-      // Preservar el pitch nativo al cambiar velocidad para que Tono y Velocidad sean 100% independientes
       (videoRef.current as HTMLVideoElement & { preservesPitch?: boolean }).preservesPitch = true;
     }
   }, [playbackSpeed, preparedTrack?.mediaUrl]);
 
-  // Arrancar reproducción cuando pasa a PLAYING
+  // Sincronizar el elemento <video> únicamente con el estado maestro playbackState
   useEffect(() => {
-    if (preparedTrack && playbackState === 'PLAYING' && videoRef.current && videoRef.current.paused) {
+    if (!videoRef.current) return;
+    if (preparedTrack && playbackState === 'PLAYING') {
       videoRef.current.volume = getEffectiveVolume();
-      videoRef.current.play().catch(() => {});
+      if (videoRef.current.paused) {
+        videoRef.current.play().catch(() => {});
+      }
+    } else if (playbackState === 'PAUSED') {
+      if (!videoRef.current.paused) {
+        videoRef.current.pause();
+      }
+    } else if (
+      playbackState === 'STOPPED' ||
+      playbackState === 'IDLE' ||
+      playbackState === 'ENDED'
+    ) {
+      if (!videoRef.current.paused) {
+        videoRef.current.pause();
+      }
     }
   }, [preparedTrack, playbackState, getEffectiveVolume]);
 
   const handleSeek = useCallback(
     async (newMs: number) => {
       if (!window.karaokeAPI) return;
-      const maxDur = durationMs || (videoRef.current ? videoRef.current.duration * 1000 : 0) || 100000;
+      const maxDur =
+        durationMs || (videoRef.current ? videoRef.current.duration * 1000 : 0) || 100000;
       const clamped = Math.max(0, Math.min(maxDur, newMs));
       setCurrentTimeMs(clamped);
       if (videoRef.current) {
@@ -237,11 +235,10 @@ export const CenterMonitorColumn: React.FC<CenterMonitorColumnProps> = ({
     ? `karaoke-media://background?v=${publicOverlay.backgroundVersion}`
     : './assets/fondo_katakana.png';
 
-  const previewSinger =
-    publicOverlay.singerName ||
-    nextQueuedItem?.singer?.displayName ||
-    null;
-  const previewTitle = cleanDisplayTitle(
+  const isCountdownActive =
+    publicOverlay.mode === 'COUNTDOWN' && publicOverlay.countdownSec !== null;
+  const countdownSinger = publicOverlay.singerName || nextQueuedItem?.singer?.displayName || null;
+  const countdownTitle = cleanDisplayTitle(
     publicOverlay.songTitle || nextQueuedItem?.song?.title || '',
   );
 
@@ -270,14 +267,24 @@ export const CenterMonitorColumn: React.FC<CenterMonitorColumnProps> = ({
               whiteSpace: 'nowrap',
             }}
           >
-            {preparedTrack ? cleanActiveTitle : 'MONITOR DE KARAOKE'}
+            {preparedTrack
+              ? cleanActiveTitle
+              : isCountdownActive && countdownTitle
+                ? countdownTitle
+                : isSessionActive
+                  ? 'SOLICITA TU CANCIÓN'
+                  : 'MONITOR DE KARAOKE'}
           </span>
           <span style={{ fontSize: '15px', fontWeight: 700, color: '#26F2E2' }}>
             {preparedTrack
               ? `Cantante: ${preparedTrack.singerName}`
-              : previewSinger
-                ? `Próximo: ${previewSinger}`
-                : 'Escenario Katakana'}
+              : isCountdownActive && countdownSinger
+                ? `Próximo cantante: ${countdownSinger} (${formatCountdownMMSS(publicOverlay.countdownSec ?? 0)})`
+                : isSessionActive
+                  ? nextQueuedItem
+                    ? `En cola listo para lanzar: ${nextQueuedItem.singer?.displayName || 'Cantante'}`
+                    : 'Sesión activa • Música de ambiente'
+                  : 'Sesión limpia • Pulsa "Iniciar Sesión" para comenzar'}
           </span>
         </div>
 
@@ -287,21 +294,28 @@ export const CenterMonitorColumn: React.FC<CenterMonitorColumnProps> = ({
             background:
               playbackState === 'PLAYING'
                 ? 'linear-gradient(180deg, #2ef2e2 0%, #00b8aa 100%)'
-                : playbackState === 'PAUSED'
+                : playbackState === 'PAUSED' || isCountdownActive
                   ? 'linear-gradient(180deg, #ffc14d 0%, #e08b00 100%)'
-                  : 'linear-gradient(180deg, #2e3746 0%, #1b212b 100%)',
+                  : isSessionActive
+                    ? 'linear-gradient(180deg, #2ef2e2 0%, #00b8aa 100%)'
+                    : 'linear-gradient(180deg, #2e3746 0%, #1b212b 100%)',
             color:
-              playbackState === 'PLAYING' || playbackState === 'PAUSED' ? '#12151a' : '#f3d285',
+              playbackState === 'PLAYING' ||
+              playbackState === 'PAUSED' ||
+              isCountdownActive ||
+              isSessionActive
+                ? '#12151a'
+                : '#f3d285',
             border:
-              playbackState === 'PAUSED'
+              playbackState === 'PAUSED' || isCountdownActive
                 ? '1.5px solid #ffe099'
-                : playbackState === 'PLAYING'
+                : playbackState === 'PLAYING' || isSessionActive
                   ? '1.5px solid #88fcf3'
                   : '1px solid rgba(201,160,80,0.45)',
             boxShadow:
-              playbackState === 'PAUSED'
+              playbackState === 'PAUSED' || isCountdownActive
                 ? '0 0 12px rgba(245, 166, 35, 0.5)'
-                : playbackState === 'PLAYING'
+                : playbackState === 'PLAYING' || isSessionActive
                   ? '0 0 12px rgba(0, 229, 209, 0.5)'
                   : 'none',
             fontSize: '13px',
@@ -313,9 +327,11 @@ export const CenterMonitorColumn: React.FC<CenterMonitorColumnProps> = ({
             ? 'EN DIRECTO'
             : playbackState === 'PAUSED'
               ? 'PAUSADO'
-              : isApplauseActive
-                ? 'APLAUSOS'
-                : 'EN ESPERA'}
+              : isCountdownActive
+                ? `CONTEO ${formatCountdownMMSS(publicOverlay.countdownSec ?? 0)}`
+                : isSessionActive
+                  ? 'SESIÓN ACTIVA'
+                  : 'SIN SESIÓN'}
         </span>
       </div>
 
@@ -399,7 +415,7 @@ export const CenterMonitorColumn: React.FC<CenterMonitorColumnProps> = ({
             />
           )}
 
-          {/* Espejo en vivo del Fondo Katakana cuando no hay vídeo activo */}
+          {/* Espejo en vivo del Fondo Katakana cuando no hay vídeo de karaoke activo */}
           {!isVideoVisible && (
             <div style={{ position: 'absolute', inset: 0 }}>
               <img
@@ -427,8 +443,7 @@ export const CenterMonitorColumn: React.FC<CenterMonitorColumnProps> = ({
                   justifyContent: 'center',
                   textAlign: 'center',
                   fontFamily: 'Georgia, Cambria, serif',
-                  pointerEvents: 'none',
-                  gap: '4px',
+                  gap: '5px',
                 }}
               >
                 {publicOverlay.quickMessage ? (
@@ -458,15 +473,15 @@ export const CenterMonitorColumn: React.FC<CenterMonitorColumnProps> = ({
                       ¡APLAUSOS EN SALA!
                     </span>
                   </div>
-                ) : previewSinger && previewTitle ? (
+                ) : isCountdownActive && countdownSinger && countdownTitle ? (
                   <>
                     <div
                       style={{
-                        fontSize: '11px',
-                        letterSpacing: '1.2px',
+                        fontSize: '11.5px',
+                        letterSpacing: '1.5px',
                         textTransform: 'uppercase',
                         color: '#F5C76B',
-                        fontWeight: 700,
+                        fontWeight: 800,
                         textShadow: '0 2px 8px rgba(0,0,0,0.95)',
                       }}
                     >
@@ -474,19 +489,19 @@ export const CenterMonitorColumn: React.FC<CenterMonitorColumnProps> = ({
                     </div>
                     <div
                       style={{
-                        fontSize: '21px',
-                        fontWeight: 800,
+                        fontSize: '23px',
+                        fontWeight: 900,
                         color: '#FFFFFF',
                         textShadow: '0 2px 10px rgba(0,0,0,0.95)',
                         lineHeight: 1.1,
                       }}
                     >
-                      {previewSinger}
+                      {countdownSinger}
                     </div>
                     <div
                       style={{
-                        fontSize: '15px',
-                        fontWeight: 700,
+                        fontSize: '16px',
+                        fontWeight: 800,
                         color: '#FFB830',
                         textShadow: '0 2px 8px rgba(0,0,0,0.95)',
                         overflow: 'hidden',
@@ -495,23 +510,89 @@ export const CenterMonitorColumn: React.FC<CenterMonitorColumnProps> = ({
                         maxWidth: '100%',
                       }}
                     >
-                      {previewTitle}
+                      {countdownTitle}
                     </div>
-                    {publicOverlay.mode === 'COUNTDOWN' && publicOverlay.countdownSec !== null && (
-                      <div
-                        style={{
-                          fontSize: '20px',
-                          fontWeight: 900,
-                          color: '#FF9E2C',
-                          fontFamily: 'var(--font-mono)',
-                          textShadow: '0 2px 10px rgba(0,0,0,0.95)',
-                        }}
-                      >
-                        {formatCountdownMMSS(publicOverlay.countdownSec)}
-                      </div>
-                    )}
+                    <div
+                      style={{
+                        fontSize: '25px',
+                        fontWeight: 900,
+                        color: '#FF9E2C',
+                        fontFamily: 'var(--font-mono)',
+                        textShadow: '0 2px 12px rgba(0,0,0,0.98), 0 0 12px rgba(255,158,44,0.45)',
+                        marginTop: '2px',
+                      }}
+                    >
+                      {formatCountdownMMSS(publicOverlay.countdownSec ?? 0)}
+                    </div>
                   </>
-                ) : null}
+                ) : isSessionActive ? (
+                  <div
+                    style={{
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      gap: '6px',
+                    }}
+                  >
+                    <div
+                      style={{
+                        fontSize: '26px',
+                        fontWeight: 900,
+                        color: '#FFFFFF',
+                        textShadow: '0 3px 14px rgba(0,0,0,0.96)',
+                        letterSpacing: '0.02em',
+                      }}
+                    >
+                      Solicita tu canción
+                    </div>
+                    <div
+                      style={{
+                        fontSize: '14px',
+                        fontWeight: 700,
+                        color: '#F5C76B',
+                        textShadow: '0 2px 10px rgba(0,0,0,0.95)',
+                      }}
+                    >
+                      {nextQueuedItem
+                        ? `Cola lista (${nextQueuedItem.singer?.displayName}) • Pulsa "Lanzar / Iniciar" para el conteo`
+                        : 'Escenario Katakana abierto'}
+                    </div>
+                  </div>
+                ) : (
+                  <div
+                    style={{
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      gap: '10px',
+                    }}
+                  >
+                    <div
+                      style={{
+                        fontSize: '16px',
+                        fontWeight: 800,
+                        color: '#F5C76B',
+                        textShadow: '0 2px 10px rgba(0,0,0,0.95)',
+                      }}
+                    >
+                      Consola limpia y lista
+                    </div>
+                    <button
+                      type="button"
+                      className="btn btn-surf"
+                      onClick={onStartSession}
+                      style={{
+                        fontFamily: 'var(--font-sans)',
+                        fontSize: '16px',
+                        fontWeight: 900,
+                        padding: '8px 18px',
+                      }}
+                    >
+                      <Power size={18} />
+                      Iniciar Sesión
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -566,7 +647,14 @@ export const CenterMonitorColumn: React.FC<CenterMonitorColumnProps> = ({
 
         {/* Barra de progreso del Karaoke */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexShrink: 0 }}>
-          <span style={{ fontFamily: 'var(--font-mono)', fontSize: '15px', fontWeight: 800, minWidth: '46px' }}>
+          <span
+            style={{
+              fontFamily: 'var(--font-mono)',
+              fontSize: '15px',
+              fontWeight: 800,
+              minWidth: '46px',
+            }}
+          >
             {formatTimeMMSS(currentTimeMs)}
           </span>
           <input
@@ -583,13 +671,28 @@ export const CenterMonitorColumn: React.FC<CenterMonitorColumnProps> = ({
             }}
             style={{ flex: 1 }}
           />
-          <span style={{ fontFamily: 'var(--font-mono)', fontSize: '15px', fontWeight: 800, whiteSpace: 'nowrap' }}>
-            -{formatTimeMMSS(Math.max(0, durationMs - currentTimeMs))} / {formatTimeMMSS(durationMs)}
+          <span
+            style={{
+              fontFamily: 'var(--font-mono)',
+              fontSize: '15px',
+              fontWeight: 800,
+              whiteSpace: 'nowrap',
+            }}
+          >
+            -{formatTimeMMSS(Math.max(0, durationMs - currentTimeMs))} /{' '}
+            {formatTimeMMSS(durationMs)}
           </span>
         </div>
 
         {/* Botonera grande de Transporte: Mensaje | Play/Pausa | Stop | Lanzar/Iniciar */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.2fr 0.9fr 1.3fr', gap: '8px', flexShrink: 0 }}>
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: '1fr 1.2fr 0.9fr 1.3fr',
+            gap: '8px',
+            flexShrink: 0,
+          }}
+        >
           <button
             type="button"
             className={`btn ${publicOverlay.quickMessage ? 'btn-toggle-active' : ''}`}
@@ -605,6 +708,7 @@ export const CenterMonitorColumn: React.FC<CenterMonitorColumnProps> = ({
             type="button"
             className="btn btn-dark"
             onClick={onTogglePlayPause}
+            disabled={!preparedTrack && !nextQueuedItem}
             title="Reproducir o Pausar (Espacio)"
             style={{ minHeight: '44px', fontSize: '16px' }}
           >
@@ -620,8 +724,8 @@ export const CenterMonitorColumn: React.FC<CenterMonitorColumnProps> = ({
             type="button"
             className="btn btn-danger"
             onClick={onStopKaraoke}
-            disabled={!preparedTrack && playbackState === 'IDLE'}
-            title="Detener canción actual"
+            disabled={!preparedTrack && playbackState === 'IDLE' && !isCountdownActive}
+            title="Detener canción actual o cancelar conteo"
             style={{ minHeight: '44px', fontSize: '16px' }}
           >
             <Square size={17} fill="currentColor" />
@@ -632,11 +736,18 @@ export const CenterMonitorColumn: React.FC<CenterMonitorColumnProps> = ({
             type="button"
             variant="surf"
             onClick={onLaunchNextOrPlay}
-            title="Lanzar / Iniciar siguiente turno de la cola"
+            disabled={playbackState === 'PLAYING'}
+            title={
+              playbackState === 'PLAYING'
+                ? 'Canción en curso (pulsa Stop si deseas detenerla manualmente)'
+                : isCountdownActive
+                  ? 'Iniciar karaoke inmediatamente sin esperar el resto del conteo'
+                  : 'Iniciar conteo regresivo para la siguiente canción de la cola'
+            }
             style={{ minHeight: '44px', fontSize: '16px' }}
           >
             <Rocket size={19} />
-            Lanzar / Iniciar
+            {isCountdownActive ? 'Iniciar Ya' : 'Lanzar / Iniciar'}
           </Btn09>
         </div>
 
@@ -652,7 +763,9 @@ export const CenterMonitorColumn: React.FC<CenterMonitorColumnProps> = ({
           {/* Cambiador de Tonos */}
           <div className="katakana-card" style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <span style={{ fontSize: '15px', fontWeight: 800, color: '#f3efe6' }}>Tono (Semitonos)</span>
+              <span style={{ fontSize: '15px', fontWeight: 800, color: '#f3efe6' }}>
+                Tono (Semitonos)
+              </span>
               <span className="katakana-value-box">
                 {pitchSemitones > 0 ? `+${pitchSemitones}` : pitchSemitones}
               </span>
@@ -705,9 +818,7 @@ export const CenterMonitorColumn: React.FC<CenterMonitorColumnProps> = ({
           <div className="katakana-card" style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <span style={{ fontSize: '15px', fontWeight: 800, color: '#f3efe6' }}>Velocidad</span>
-              <span className="katakana-value-box">
-                {playbackSpeed.toFixed(2)}X
-              </span>
+              <span className="katakana-value-box">{playbackSpeed.toFixed(2)}X</span>
             </div>
 
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -755,7 +866,9 @@ export const CenterMonitorColumn: React.FC<CenterMonitorColumnProps> = ({
             {karaokeMuted ? <VolumeX size={17} /> : <Volume2 size={17} />}
           </button>
 
-          <span style={{ fontSize: '14.5px', fontWeight: 800, whiteSpace: 'nowrap', color: '#f3efe6' }}>Vol. Karaoke:</span>
+          <span style={{ fontSize: '14.5px', fontWeight: 800, whiteSpace: 'nowrap', color: '#f3efe6' }}>
+            Vol. Karaoke:
+          </span>
 
           <input
             type="range"

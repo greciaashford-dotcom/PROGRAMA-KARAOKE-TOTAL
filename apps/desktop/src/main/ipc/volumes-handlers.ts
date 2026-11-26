@@ -3,7 +3,8 @@ import { IPC_CHANNELS, ok, err, ErrorCode } from '@karaoke/contracts';
 import { VolumesStore, VolumesStoreData } from '../storage/volumes-store.js';
 
 export interface PublicOverlayState {
-  mode: 'IDLE' | 'COUNTDOWN' | 'READY';
+  mode: 'IDLE' | 'REQUEST_SONG' | 'COUNTDOWN' | 'READY';
+  sessionActive?: boolean;
   countdownSec: number | null;
   singerName: string | null;
   songTitle: string | null;
@@ -19,6 +20,7 @@ export function registerVolumesHandlers(
 ): void {
   let latestOverlay: PublicOverlayState = {
     mode: 'IDLE',
+    sessionActive: false,
     countdownSec: null,
     singerName: null,
     songTitle: null,

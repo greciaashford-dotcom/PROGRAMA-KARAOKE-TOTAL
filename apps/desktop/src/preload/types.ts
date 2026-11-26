@@ -42,7 +42,8 @@ export interface VolumesStoreDTO {
 }
 
 export interface PublicOverlayStateDTO {
-  mode: 'IDLE' | 'COUNTDOWN' | 'READY';
+  mode: 'IDLE' | 'REQUEST_SONG' | 'COUNTDOWN' | 'READY';
+  sessionActive?: boolean;
   countdownSec: number | null;
   singerName: string | null;
   songTitle: string | null;
