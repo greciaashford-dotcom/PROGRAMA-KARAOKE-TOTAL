@@ -172,10 +172,9 @@ export const CatalogModal: React.FC<CatalogModalProps> = ({
             </button>
             <button
               type="button"
-              className="btn btn-icon"
+              className="btn btn-dark btn-icon"
               onClick={onClose}
               aria-label="Cerrar catálogo"
-              style={{ backgroundColor: '#f6efe0' }}
             >
               <X size={22} />
             </button>
@@ -187,10 +186,11 @@ export const CatalogModal: React.FC<CatalogModalProps> = ({
           <div
             style={{
               padding: '8px 18px',
-              backgroundColor: 'rgba(0, 194, 181, 0.2)',
-              borderBottom: '2px solid var(--ink-piano)',
+              backgroundColor: 'rgba(0, 229, 209, 0.16)',
+              borderBottom: '1px solid rgba(201, 160, 80, 0.5)',
               fontSize: '15px',
               fontWeight: 700,
+              color: '#F3EFE6',
               display: 'flex',
               justifyContent: 'space-between',
             }}
@@ -206,8 +206,8 @@ export const CatalogModal: React.FC<CatalogModalProps> = ({
         <div
           style={{
             padding: '12px 18px',
-            backgroundColor: 'var(--bg-surface-warm)',
-            borderBottom: '2px solid var(--ink-piano)',
+            backgroundColor: '#111722',
+            borderBottom: '1px solid rgba(201, 160, 80, 0.45)',
             display: 'flex',
             flexDirection: 'column',
             gap: '8px',
@@ -216,7 +216,7 @@ export const CatalogModal: React.FC<CatalogModalProps> = ({
           <div style={{ position: 'relative' }}>
             <Search
               size={22}
-              style={{ position: 'absolute', left: '14px', top: '12px', color: 'var(--ink-piano)' }}
+              style={{ position: 'absolute', left: '14px', top: '12px', color: '#F3D285' }}
             />
             <input
               ref={searchInputRef}

@@ -1,45 +1,59 @@
-/* Katakana Karaoke — Karaoke Total (Paleta 60-30-10 + Botones Estilo Btn09 con Círculo Celeste y Ondas SVG) */
+/* Katakana Karaoke — Karaoke Total
+   Estética Oficial Studio Luxury:
+   - Fondo oscuro obsidiana con destellos celestes (#00E5D1) y dorados (#D4AF63)
+   - Paneles oscuros enmarcados en oro champán con brillo cálido
+   - Filas de lectura (MP3 y Cola) en Marfil/Crema (#F3E9D4 -> #DECDA8) con texto Negro Piano (#151515)
+   - Botones 3D metálicos brillantes (Turquesa Surf, Pizarra Oscura y Rojo Rubí)
+*/
 :root {
-  /* 60% Principal — Marfil Antiguo */
-  --bg-app: #eee3cc;
-  --bg-surface: #f7f0e2;
-  --bg-surface-raised: #fcf9f2;
-  --bg-surface-warm: #e5d8bd;
-  --bg-surface-hover: #dfd0b1;
+  /* Fondos de consola y paneles */
+  --bg-app: #0b0f17;
+  --bg-surface: #141a24;
+  --bg-surface-raised: #1c2432;
+  --bg-surface-warm: #25221e;
+  --bg-surface-hover: #263142;
 
-  /* 30% Secundario — Negro Piano / Gris Pizarra Oscuro (bg-gray-800 / #151515) */
+  /* Filas de alto contraste Marfil/Crema para lectura fácil */
+  --row-cream-top: #f4ead5;
+  --row-cream-bottom: #dfd0b0;
+  --row-cream-hover: #f9f2e2;
+
+  /* Textos */
   --ink-piano: #151515;
-  --ink-slate: #1f2937;
-  --ink-secondary: #3a352c;
-  --ink-muted: #5c5447;
-  --border-subtle: #cbbba0;
-  --border-strong: #151515;
+  --ink-light: #f5efe2;
+  --ink-gold: #f3d285;
+  --ink-secondary: #cbbfa8;
+  --ink-muted: #948b78;
 
-  /* 10% Acento — Celeste / Turquesa Surf (#00C2B5 y #29C7FF) */
-  --accent-surf: #00c2b5;
-  --accent-surf-bright: #29c7ff;
-  --accent-surf-hover: #00a89d;
+  /* Bordes dorados y metálicos */
+  --border-gold: #c9a050;
+  --border-gold-bright: #ebd08e;
+  --border-subtle: rgba(201, 160, 80, 0.36);
+  --border-strong: #c9a050;
+
+  /* Acento Celeste / Turquesa Surf */
+  --accent-surf: #00d8c8;
+  --accent-surf-bright: #26f2e2;
+  --accent-surf-hover: #00c2b5;
   --accent-surf-dark: #00857c;
-  --accent-surf-soft: rgba(0, 194, 181, 0.18);
-  --accent-surf-contrast: #151515;
+  --accent-surf-soft: rgba(0, 216, 200, 0.2);
+  --accent-surf-contrast: #0b1116;
 
   /* Estados operativos */
-  --status-ready: #0d9488;
-  --status-warning: #d97706;
-  --status-error: #c92a2a;
-  --status-emergency: #b91c1c;
+  --status-ready: #00d8c8;
+  --status-warning: #f5a623;
+  --status-error: #d62828;
+  --status-emergency: #c92020;
 
   /* Aliases de compatibilidad */
-  --text-primary: var(--ink-piano);
+  --text-primary: var(--ink-light);
   --text-secondary: var(--ink-secondary);
   --text-muted: var(--ink-muted);
   --accent-warm: var(--accent-surf);
 
-  /* Ondas SVG de las esquinas de Btn09 codificadas en Data URI */
-  --btn-wave-left-svg: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 487 487'%3E%3Cpath fill='%23FFFFFF' fill-opacity='0.13' fill-rule='nonzero' d='M0 .3c67 2.1 134.1 4.3 186.3 37 52.2 32.7 89.6 95.8 112.8 150.6 23.2 54.8 32.3 101.4 61.2 149.9 28.9 48.4 77.7 98.8 126.4 149.2H0V.3z'/%3E%3C/svg%3E");
-  --btn-wave-right-svg: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 487 487'%3E%3Cpath fill='%23FFFFFF' fill-opacity='0.13' fill-rule='nonzero' d='M487 486.7c-66.1-3.6-132.3-7.3-186.3-37s-95.9-85.3-126.2-137.2c-30.4-51.8-49.3-99.9-76.5-151.4C70.9 109.6 35.6 54.8.3 0H487v486.7z'/%3E%3C/svg%3E");
-  --btn-wave-left-dark-svg: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 487 487'%3E%3Cpath fill='%23FFFFFF' fill-opacity='0.24' fill-rule='nonzero' d='M0 .3c67 2.1 134.1 4.3 186.3 37 52.2 32.7 89.6 95.8 112.8 150.6 23.2 54.8 32.3 101.4 61.2 149.9 28.9 48.4 77.7 98.8 126.4 149.2H0V.3z'/%3E%3C/svg%3E");
-  --btn-wave-right-dark-svg: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 487 487'%3E%3Cpath fill='%23FFFFFF' fill-opacity='0.24' fill-rule='nonzero' d='M487 486.7c-66.1-3.6-132.3-7.3-186.3-37s-95.9-85.3-126.2-137.2c-30.4-51.8-49.3-99.9-76.5-151.4C70.9 109.6 35.6 54.8.3 0H487v486.7z'/%3E%3C/svg%3E");
+  /* Ondas SVG sutiles en botones */
+  --btn-wave-left-svg: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 487 487'%3E%3Cpath fill='%23FFFFFF' fill-opacity='0.08' fill-rule='nonzero' d='M0 .3c67 2.1 134.1 4.3 186.3 37 52.2 32.7 89.6 95.8 112.8 150.6 23.2 54.8 32.3 101.4 61.2 149.9 28.9 48.4 77.7 98.8 126.4 149.2H0V.3z'/%3E%3C/svg%3E");
+  --btn-wave-right-svg: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 487 487'%3E%3Cpath fill='%23FFFFFF' fill-opacity='0.08' fill-rule='nonzero' d='M487 486.7c-66.1-3.6-132.3-7.3-186.3-37s-95.9-85.3-126.2-137.2c-30.4-51.8-49.3-99.9-76.5-151.4C70.9 109.6 35.6 54.8.3 0H487v486.7z'/%3E%3C/svg%3E");
 
   --font-sans: "Segoe UI", -apple-system, BlinkMacSystemFont, Roboto, Helvetica, Arial, sans-serif;
   --font-mono: "Cascadia Code", "Consolas", ui-monospace, SFMono-Regular, monospace;
@@ -60,29 +74,28 @@
 }
 
 ::-webkit-scrollbar {
-  width: 9px;
-  height: 9px;
+  width: 8px;
+  height: 8px;
 }
 
 ::-webkit-scrollbar-track {
-  background: var(--bg-surface-warm);
-  border-radius: 5px;
+  background: rgba(12, 16, 23, 0.7);
+  border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #8a7f6c;
-  border-radius: 5px;
-  border: 2px solid var(--bg-surface-warm);
+  background: linear-gradient(180deg, #b89146 0%, #7d5f28 100%);
+  border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--ink-piano);
+  background: linear-gradient(180deg, #e0b865 0%, #a47e38 100%);
 }
 
 body {
   font-family: var(--font-sans);
-  background: radial-gradient(circle at 50% 0%, #f5ebd6 0%, #e8dbc0 100%);
-  color: var(--ink-piano);
+  background-color: var(--bg-app);
+  color: var(--ink-light);
   font-size: 16px;
   line-height: 1.35;
   user-select: none;
@@ -93,94 +106,144 @@ body {
 }
 
 :focus-visible {
-  outline: 3px solid var(--accent-surf);
+  outline: 2px solid var(--accent-surf-bright);
   outline-offset: 2px;
 }
 
-/* Contenedor principal responsivo (1280x720 a 1920x1080) */
+/* Contenedor principal con atmósfera de luces celestes y doradas */
 .katakana-app {
   display: flex;
   flex-direction: column;
   height: 100vh;
   width: 100vw;
-  background: radial-gradient(circle at 50% 0%, #f5ebd6 0%, #e6d8bc 100%);
-  color: var(--ink-piano);
+  background:
+    radial-gradient(ellipse at 32% 0%, rgba(0, 229, 209, 0.22) 0%, transparent 45%),
+    radial-gradient(ellipse at 50% 14%, rgba(0, 216, 200, 0.14) 0%, transparent 50%),
+    radial-gradient(ellipse at 82% 8%, rgba(212, 175, 99, 0.16) 0%, transparent 45%),
+    radial-gradient(ellipse at 20% 68%, rgba(212, 175, 99, 0.12) 0%, transparent 50%),
+    linear-gradient(180deg, #0b1019 0%, #121824 50%, #0a0e16 100%);
+  color: var(--ink-light);
   overflow: hidden;
 }
 
-/* Barra superior Negro Piano (30%) con reflejo celeste */
+/* Barra superior estilo consola de lujo */
 .katakana-topbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  background: linear-gradient(180deg, #1e242d 0%, #12151a 100%);
-  color: #f6efe0;
+  background:
+    radial-gradient(ellipse at 28% 100%, rgba(0, 229, 209, 0.25) 0%, transparent 55%),
+    linear-gradient(180deg, #1a212e 0%, #0e131c 100%);
+  color: var(--ink-light);
   padding: 6px 14px;
   height: 56px;
   flex-shrink: 0;
-  border-bottom: 3px solid var(--accent-surf);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+  border-bottom: 1.5px solid rgba(201, 160, 80, 0.65);
+  box-shadow:
+    0 4px 18px rgba(0, 0, 0, 0.6),
+    0 1px 12px rgba(0, 216, 200, 0.2);
   gap: 10px;
+  position: relative;
+}
+
+.katakana-topbar::after {
+  content: "";
+  position: absolute;
+  left: 15%;
+  right: 15%;
+  bottom: -1px;
+  height: 2px;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    #c9a050 20%,
+    #26f2e2 50%,
+    #c9a050 80%,
+    transparent 100%
+  );
+  pointer-events: none;
 }
 
 .katakana-brand {
   display: flex;
   align-items: center;
   gap: 10px;
-  font-size: 20px;
+  font-size: 22px;
   font-weight: 800;
   letter-spacing: -0.2px;
-  color: #f6efe0;
+  color: #f4d898;
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.7);
   white-space: nowrap;
 }
 
+.katakana-logo-circle {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 30% 30%, #382e1e 0%, #15120c 100%);
+  border: 2px solid #e0b865;
+  box-shadow: 0 0 10px rgba(224, 184, 101, 0.4), inset 0 0 6px rgba(224, 184, 101, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #f4d898;
+  flex-shrink: 0;
+}
+
 .katakana-brand-pill {
-  background: linear-gradient(135deg, #00c2b5 0%, #29c7ff 100%);
-  color: var(--ink-piano);
+  background: linear-gradient(180deg, #28f0e0 0%, #00b8aa 100%);
+  color: #0b1116;
   font-size: 12px;
   font-weight: 900;
-  padding: 3px 10px;
-  border-radius: 6px;
+  padding: 4px 12px;
+  border-radius: 999px;
+  border: 1.5px solid #7ffbf1;
   text-transform: uppercase;
   letter-spacing: 0.6px;
-  box-shadow: 0 2px 8px rgba(0, 194, 181, 0.35);
+  box-shadow: 0 0 14px rgba(0, 229, 209, 0.55);
 }
 
 .katakana-clock {
   font-family: var(--font-mono);
-  font-size: 17px;
+  font-size: 18px;
   font-weight: 800;
-  color: #f6efe0;
-  background: linear-gradient(180deg, #27303d 0%, #181d25 100%);
-  padding: 5px 12px;
-  border-radius: 8px;
-  border: 1px solid rgba(41, 199, 255, 0.35);
-  box-shadow: inset 0 1px 2px rgba(255, 255, 255, 0.08);
+  color: #ffffff;
+  background: linear-gradient(180deg, #273142 0%, #161c26 100%);
+  padding: 5px 14px;
+  border-radius: 9px;
+  border: 1.5px solid rgba(180, 195, 215, 0.35);
+  box-shadow:
+    0 2px 8px rgba(0, 0, 0, 0.45),
+    inset 0 1px 0 rgba(255, 255, 255, 0.15);
 }
 
 /* Área superior de 3 columnas */
 .katakana-main-grid {
   display: grid;
-  grid-template-columns: minmax(270px, 0.92fr) minmax(440px, 1.38fr) minmax(290px, 0.96fr);
-  gap: 10px;
+  grid-template-columns: minmax(275px, 0.94fr) minmax(440px, 1.36fr) minmax(290px, 0.96fr);
+  gap: 11px;
   padding: 10px 12px 6px 12px;
   flex: 1 1 auto;
   min-height: 0;
   overflow: hidden;
 }
 
-/* Paneles Marfil Antiguo con acabado de estudio moderno */
+/* Paneles oscuros con marco dorado champán y resplandor */
 .katakana-panel {
-  background: linear-gradient(180deg, #faf5e8 0%, #f2e8d2 100%);
-  border: 2px solid var(--ink-piano);
+  background:
+    radial-gradient(ellipse at 50% 0%, rgba(0, 216, 200, 0.08) 0%, transparent 55%),
+    linear-gradient(180deg, #181f2c 0%, #10151f 100%);
+  border: 1.5px solid var(--border-gold);
   border-radius: 14px;
   display: flex;
   flex-direction: column;
   min-height: 0;
   overflow: hidden;
   box-shadow:
-    0 8px 20px rgba(21, 21, 21, 0.12),
-    inset 0 1px 0 rgba(255, 255, 255, 0.75);
+    0 8px 24px rgba(0, 0, 0, 0.65),
+    0 0 14px rgba(201, 160, 80, 0.18),
+    inset 0 0 0 1px rgba(255, 230, 170, 0.12);
+  position: relative;
 }
 
 .katakana-panel-header {
@@ -188,14 +251,19 @@ body {
   align-items: center;
   justify-content: space-between;
   padding: 8px 13px;
-  background: linear-gradient(180deg, #ebe0c7 0%, #dfd1b3 100%);
-  border-bottom: 2px solid var(--ink-piano);
-  font-size: 17px;
-  font-weight: 900;
-  color: var(--ink-piano);
+  background: linear-gradient(
+    90deg,
+    rgba(52, 42, 26, 0.92) 0%,
+    rgba(28, 35, 48, 0.95) 50%,
+    rgba(58, 46, 28, 0.92) 100%
+  );
+  border-bottom: 1.5px solid rgba(201, 160, 80, 0.55);
+  font-size: 16px;
+  font-weight: 800;
+  color: #f4ebd9;
   flex-shrink: 0;
   gap: 8px;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.65);
+  box-shadow: inset 0 1px 0 rgba(255, 235, 190, 0.22);
 }
 
 .katakana-panel-body {
@@ -210,7 +278,7 @@ body {
 
 /* Parte inferior (Ancho completo: Cola + Efectos) */
 .katakana-bottom-section {
-  height: 225px;
+  height: 222px;
   min-height: 185px;
   max-height: 34vh;
   flex-shrink: 0;
@@ -220,13 +288,10 @@ body {
 }
 
 /* ============================================================================
-   BOTONES ESTILO Btn09 (button-hover.tsx) ADAPTADOS CON CELESTE (#00C2B5 / #29C7FF)
-   - Fondo elegante con ondas SVG en esquina inferior-izquierda y superior-derecha
-   - Brillo degradado inferior (from-transparent via-transparent to-gray-200/25)
-   - Círculo central expansivo en hover (500ms ease-out) en color Celeste
+   BOTONES 3D METÁLICOS CON ONDAS Y RESPLANDOR CELESTE / TURQUESA
    ============================================================================ */
 .btn {
-  --btn-ripple-color: linear-gradient(135deg, #00c2b5 0%, #29c7ff 100%);
+  --btn-ripple-color: radial-gradient(circle, rgba(0, 229, 209, 0.45) 0%, rgba(0, 184, 170, 0.25) 100%);
   position: relative;
   overflow: hidden;
   isolation: isolate;
@@ -234,38 +299,36 @@ body {
   align-items: center;
   justify-content: center;
   gap: 7px;
-  min-height: 40px;
-  padding: 0 15px;
+  min-height: 38px;
+  padding: 0 14px;
   border-radius: 9px;
   font-size: 15px;
-  font-weight: 800;
-  letter-spacing: -0.2px;
+  font-weight: 700;
   cursor: pointer;
-  border: 2px solid var(--ink-piano);
-  background-color: #1f2937;
+  border: 1.5px solid rgba(175, 190, 210, 0.42);
+  background-color: #232b38;
   background-image:
     var(--btn-wave-left-svg),
     var(--btn-wave-right-svg),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.04) 0%, rgba(229, 231, 235, 0.18) 100%);
+    linear-gradient(180deg, #323d4f 0%, #1c232e 55%, #151a24 100%);
   background-position:
     left -6px bottom 0,
     right -10px top 0,
     center;
   background-repeat: no-repeat, no-repeat, no-repeat;
-  background-size: auto 100%, 46px 100%, 100% 100%;
-  color: #ffffff;
+  background-size: auto 100%, 44px 100%, 100% 100%;
+  color: #f3efe6;
   box-shadow:
-    0 3px 0 var(--ink-piano),
-    0 4px 10px rgba(0, 0, 0, 0.16);
+    0 3px 8px rgba(0, 0, 0, 0.5),
+    inset 0 1px 0 rgba(255, 255, 255, 0.22);
   transition:
-    color 0.32s ease,
+    color 0.25s ease,
     border-color 0.25s ease,
-    transform 0.12s ease,
+    transform 0.1s ease,
     box-shadow 0.22s ease;
   white-space: nowrap;
 }
 
-/* Círculo expansivo central en hover (500ms ease-out) como en Btn09 */
 .btn::before {
   content: "";
   position: absolute;
@@ -277,49 +340,27 @@ body {
   background: var(--btn-ripple-color);
   transform: translate(-50%, -50%);
   transition:
-    width 0.5s cubic-bezier(0.16, 1, 0.3, 1),
-    height 0.5s cubic-bezier(0.16, 1, 0.3, 1),
-    opacity 0.4s ease;
-  z-index: -1;
-  pointer-events: none;
-  opacity: 0.96;
-}
-
-/* Re-aplicar las ondas SVG sutiles por encima del círculo expansivo */
-.btn::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background-image:
-    var(--btn-wave-left-svg),
-    var(--btn-wave-right-svg),
-    linear-gradient(180deg, transparent 55%, rgba(255, 255, 255, 0.16) 100%);
-  background-position:
-    left -6px bottom 0,
-    right -10px top 0,
-    center;
-  background-repeat: no-repeat, no-repeat, no-repeat;
-  background-size: auto 100%, 46px 100%, 100% 100%;
+    width 0.48s cubic-bezier(0.16, 1, 0.3, 1),
+    height 0.48s cubic-bezier(0.16, 1, 0.3, 1);
   z-index: -1;
   pointer-events: none;
 }
 
 .btn:hover:not(:disabled) {
-  color: #151515;
-  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.35);
+  border-color: var(--accent-surf-bright);
+  color: #ffffff;
   box-shadow:
-    0 3px 0 var(--ink-piano),
-    0 6px 16px rgba(0, 194, 181, 0.35);
+    0 4px 14px rgba(0, 229, 209, 0.32),
+    inset 0 1px 0 rgba(255, 255, 255, 0.35);
 }
 
 .btn:hover:not(:disabled)::before {
-  width: 340px;
-  height: 340px;
+  width: 300px;
+  height: 300px;
 }
 
 .btn:active:not(:disabled) {
-  transform: translateY(2px);
-  box-shadow: 0 1px 0 var(--ink-piano);
+  transform: translateY(1px);
 }
 
 .btn:disabled {
@@ -328,94 +369,126 @@ body {
   box-shadow: none;
 }
 
-/* Variante protagonista Celeste / Turquesa Surf (.btn-surf / .btn-primary / .btn-toggle-active) */
+/* Botones protagonistas Celeste / Turquesa Surf (Continua, Auto int, Lanzar, Activo, Iniciar ya) */
 .btn-primary,
 .btn-surf,
 .btn-toggle-active {
-  --btn-ripple-color: linear-gradient(135deg, #29c7ff 0%, #00e1d2 100%);
-  background-color: var(--accent-surf);
+  --btn-ripple-color: radial-gradient(circle, rgba(255, 255, 255, 0.35) 0%, rgba(41, 199, 255, 0.25) 100%);
+  background-color: #00d2c2;
   background-image:
-    var(--btn-wave-left-dark-svg),
-    var(--btn-wave-right-dark-svg),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.22) 0%, rgba(0, 140, 130, 0.22) 100%);
-  color: var(--ink-piano);
-  border: 2px solid var(--ink-piano);
-  font-weight: 900;
+    var(--btn-wave-left-svg),
+    var(--btn-wave-right-svg),
+    linear-gradient(180deg, #2ef2e2 0%, #00c4b4 55%, #009e91 100%);
+  color: #0d131a;
+  border: 1.5px solid #7ffbf1;
+  font-weight: 800;
   text-shadow: 0 1px 0 rgba(255, 255, 255, 0.35);
   box-shadow:
-    0 3px 0 var(--ink-piano),
-    0 5px 14px rgba(0, 194, 181, 0.32);
+    0 3px 12px rgba(0, 229, 209, 0.45),
+    inset 0 1px 1px rgba(255, 255, 255, 0.65);
 }
 
 .btn-primary:hover:not(:disabled),
 .btn-surf:hover:not(:disabled),
 .btn-toggle-active:hover:not(:disabled) {
-  color: #0b0e14;
+  color: #05080c;
+  border-color: #ffffff;
   box-shadow:
-    0 3px 0 var(--ink-piano),
-    0 8px 20px rgba(41, 199, 255, 0.48);
+    0 4px 18px rgba(0, 240, 220, 0.68),
+    inset 0 1px 2px rgba(255, 255, 255, 0.8);
 }
 
-/* Variante oscura Negro Piano (.btn-dark) con círculo expansivo Celeste */
-.btn-dark {
-  --btn-ripple-color: linear-gradient(135deg, #00c2b5 0%, #29c7ff 100%);
-  background-color: #141820;
-  color: #f6efe0;
-  border: 2px solid var(--ink-piano);
+/* Botón Hero Cristal Turquesa para "Abrir Catálogo / Buscar" */
+.btn-catalog-hero {
+  --btn-ripple-color: radial-gradient(circle, rgba(38, 242, 226, 0.45) 0%, rgba(0, 194, 181, 0.2) 100%);
+  background-color: #0f6e72;
+  background-image:
+    var(--btn-wave-left-svg),
+    var(--btn-wave-right-svg),
+    linear-gradient(180deg, #1ea8a8 0%, #0c585e 52%, #117b80 100%);
+  color: #ffffff;
+  border: 2px solid #3df5e6;
+  border-radius: 12px;
   font-weight: 800;
+  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.65);
+  box-shadow:
+    0 0 18px rgba(0, 229, 209, 0.38),
+    0 4px 12px rgba(0, 0, 0, 0.55),
+    inset 0 1px 1px rgba(255, 255, 255, 0.55);
 }
 
-.btn-dark:hover:not(:disabled) {
-  color: #151515;
+.btn-catalog-hero:hover:not(:disabled) {
+  color: #ffffff;
+  border-color: #9bfcf4;
+  box-shadow:
+    0 0 24px rgba(38, 242, 226, 0.65),
+    0 4px 14px rgba(0, 0, 0, 0.6),
+    inset 0 1px 2px rgba(255, 255, 255, 0.75);
 }
 
-/* Variante de alerta / Stop / Quitar (.btn-danger / .btn-emergency) */
+/* Botón Metálico Pizarra Oscura (.btn-dark) */
+.btn-dark {
+  background-color: #222a36;
+  background-image:
+    var(--btn-wave-left-svg),
+    var(--btn-wave-right-svg),
+    linear-gradient(180deg, #354052 0%, #1d2430 55%, #141922 100%);
+  color: #f3efe6;
+  border: 1.5px solid rgba(185, 198, 218, 0.42);
+  font-weight: 700;
+}
+
+/* Botón Rojo Rubí Brillante (Stop, Emergencia, Cancelar, Quitar) */
 .btn-danger,
 .btn-emergency {
-  --btn-ripple-color: linear-gradient(135deg, #ff4d4d 0%, #e03131 100%);
-  background-color: #b91c1c;
+  --btn-ripple-color: radial-gradient(circle, rgba(255, 120, 120, 0.4) 0%, rgba(220, 38, 38, 0.2) 100%);
+  background-color: #c92020;
+  background-image:
+    var(--btn-wave-left-svg),
+    var(--btn-wave-right-svg),
+    linear-gradient(180deg, #ef4444 0%, #b91c1c 55%, #8f1313 100%);
   color: #ffffff;
-  border: 2px solid #5c0f0f;
-  font-weight: 900;
+  border: 1.5px solid #ff8787;
+  font-weight: 800;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
   box-shadow:
-    0 3px 0 #4a0a0a,
-    0 4px 12px rgba(201, 42, 42, 0.3);
+    0 3px 12px rgba(220, 38, 38, 0.45),
+    inset 0 1px 1px rgba(255, 255, 255, 0.45);
 }
 
 .btn-danger:hover:not(:disabled),
 .btn-emergency:hover:not(:disabled) {
   color: #ffffff;
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+  border-color: #ffc9c9;
   box-shadow:
-    0 3px 0 #4a0a0a,
-    0 6px 18px rgba(239, 68, 68, 0.48);
+    0 4px 18px rgba(239, 68, 68, 0.7),
+    inset 0 1px 2px rgba(255, 255, 255, 0.65);
 }
 
 .btn-icon {
   padding: 0;
-  min-width: 40px;
-  width: 40px;
-  height: 40px;
+  min-width: 38px;
+  width: 38px;
+  height: 38px;
 }
 
 .btn-compact {
-  min-height: 36px;
-  height: 36px;
-  padding: 0 12px;
+  min-height: 34px;
+  height: 34px;
+  padding: 0 11px;
   font-size: 14px;
   border-radius: 8px;
 }
 
 .btn-lg {
-  min-height: 48px;
-  padding: 0 24px;
+  min-height: 46px;
+  padding: 0 22px;
   font-size: 17px;
   border-radius: 10px;
 }
 
-/* Clases explícitas del componente /components/ui/button-hover.tsx (Btn09) */
-.btn-hover-fx::before,
-.btn-hover-fx::after {
+/* Soporte para el componente explícito Btn09 (/components/ui/button-hover.tsx) */
+.btn-hover-fx::before {
   display: none;
 }
 
@@ -426,7 +499,7 @@ body {
   width: 0;
   height: 0;
   border-radius: 9999px;
-  background: var(--btn-ripple-color, linear-gradient(135deg, #00c2b5 0%, #29c7ff 100%));
+  background: var(--btn-ripple-color, radial-gradient(circle, rgba(38, 242, 226, 0.45) 0%, rgba(0, 194, 181, 0.2) 100%));
   transform: translate(-50%, -50%);
   transition:
     width 0.5s cubic-bezier(0.16, 1, 0.3, 1),
@@ -436,8 +509,8 @@ body {
 }
 
 .btn-hover-fx:hover:not(:disabled) .btn-hover-circle {
-  width: 320px;
-  height: 320px;
+  width: 340px;
+  height: 340px;
 }
 
 .btn-hover-wave-left {
@@ -474,7 +547,7 @@ body {
   width: 100%;
   height: 100%;
   border-radius: 8px;
-  background: linear-gradient(180deg, transparent 0%, transparent 50%, rgba(229, 231, 235, 0.28) 100%);
+  background: linear-gradient(180deg, transparent 0%, transparent 55%, rgba(255, 255, 255, 0.14) 100%);
   pointer-events: none;
   z-index: 1;
 }
@@ -488,7 +561,70 @@ body {
   gap: 8px;
 }
 
-/* Inputs y selects grandes y claros */
+/* Cajitas de valor en color Marfil/Crema (como "0", "1.00X", "20" en la imagen de referencia) */
+.katakana-value-box {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(180deg, #f6edd9 0%, #decda8 100%);
+  color: #151515;
+  border: 1.5px solid #b89b67;
+  border-radius: 7px;
+  padding: 2px 10px;
+  font-family: var(--font-mono);
+  font-size: 15px;
+  font-weight: 900;
+  box-shadow:
+    0 2px 4px rgba(0, 0, 0, 0.35),
+    inset 0 1px 0 rgba(255, 255, 255, 0.8);
+}
+
+/* Filas Marfil/Crema en lista de MP3 */
+.katakana-mp3-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 11px;
+  border-radius: 8px;
+  cursor: pointer;
+  background: linear-gradient(180deg, #f3e9d2 0%, #dfd0ae 100%);
+  border: 1.5px solid #b59b68;
+  color: #151515;
+  font-size: 16px;
+  font-weight: 800;
+  box-shadow:
+    0 2px 5px rgba(0, 0, 0, 0.35),
+    inset 0 1px 0 rgba(255, 255, 255, 0.75);
+  transition: transform 0.1s ease, box-shadow 0.15s ease;
+}
+
+.katakana-mp3-row:hover {
+  background: linear-gradient(180deg, #faf3e3 0%, #e8d9b8 100%);
+}
+
+.katakana-mp3-row.selected {
+  background: linear-gradient(90deg, #00d2c2 0%, #24f0e0 100%);
+  border: 1.5px solid #88fcf3;
+  color: #0b1116;
+  box-shadow:
+    0 0 14px rgba(0, 229, 209, 0.45),
+    inset 0 1px 0 rgba(255, 255, 255, 0.65);
+}
+
+/* Tarjetas internas oscuras metálicas */
+.katakana-card {
+  background: linear-gradient(180deg, #1d2533 0%, #141a24 100%);
+  border: 1.5px solid rgba(190, 160, 100, 0.35);
+  border-radius: 10px;
+  padding: 8px 10px;
+  color: var(--ink-light);
+  box-shadow:
+    0 3px 10px rgba(0, 0, 0, 0.4),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+/* Inputs y selects */
 .form-group {
   display: flex;
   flex-direction: column;
@@ -497,104 +633,127 @@ body {
 
 .form-label {
   font-size: 15px;
-  font-weight: 800;
-  color: var(--ink-piano);
+  font-weight: 700;
+  color: var(--ink-light);
 }
 
 .form-input {
-  min-height: 42px;
+  min-height: 40px;
   padding: 6px 12px;
-  background-color: #ffffff;
-  border: 2px solid var(--ink-piano);
-  border-radius: 9px;
-  color: var(--ink-piano);
+  background: linear-gradient(180deg, #f6edd9 0%, #e4d5b7 100%);
+  border: 1.5px solid #c9a050;
+  border-radius: 8px;
+  color: #151515;
   font-size: 16px;
-  font-weight: 700;
-  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.08);
-  transition: border-color 0.16s ease, box-shadow 0.16s ease;
+  font-weight: 800;
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.15);
 }
 
 .form-input:focus {
-  border-color: var(--accent-surf-dark);
-  box-shadow: 0 0 0 3px var(--accent-surf-soft);
+  border-color: var(--accent-surf-bright);
+  box-shadow: 0 0 0 3px rgba(0, 229, 209, 0.28);
   outline: none;
 }
 
-/* Sliders de alto contraste con acento celeste */
+/* Sliders estilizados con perilla luminosa celeste */
 input[type="range"] {
-  accent-color: var(--accent-surf);
-  height: 10px;
+  -webkit-appearance: none;
+  appearance: none;
+  background: linear-gradient(90deg, #00d8c8 0%, #2a3546 100%);
+  height: 7px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
   cursor: pointer;
 }
 
-/* Tarjetas internas */
-.katakana-card {
-  background: linear-gradient(180deg, #fdfbf6 0%, #f5eddc 100%);
-  border: 1.5px solid var(--border-subtle);
-  border-radius: 11px;
-  padding: 8px 10px;
-  box-shadow:
-    0 2px 6px rgba(21, 21, 21, 0.05),
-    inset 0 1px 0 rgba(255, 255, 255, 0.85);
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 17px;
+  height: 17px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 35%, #a5fff8 0%, #00d8c8 60%, #008f84 100%);
+  border: 2px solid #ffffff;
+  box-shadow: 0 0 10px rgba(0, 229, 209, 0.85);
+  cursor: pointer;
 }
 
-/* Tabla de Cola y Catálogo */
+/* Tabla de Cola con cabecera bronce/oro y filas Marfil/Crema */
 .katakana-table {
   width: 100%;
-  border-collapse: collapse;
+  border-collapse: separate;
+  border-spacing: 0 4px;
   text-align: left;
+  padding: 0 6px;
 }
 
 .katakana-table th {
   position: sticky;
   top: 0;
   z-index: 2;
-  background: linear-gradient(180deg, #ebe0c7 0%, #dfd1b3 100%);
-  color: var(--ink-piano);
-  font-size: 15px;
-  font-weight: 900;
-  padding: 8px 10px;
-  border-bottom: 2px solid var(--ink-piano);
+  background: linear-gradient(180deg, #2d261c 0%, #1d1914 100%);
+  color: #ebd5a7;
+  font-size: 13.5px;
+  font-weight: 800;
+  padding: 6px 12px;
+  border-bottom: 1.5px solid rgba(201, 160, 80, 0.55);
   text-transform: uppercase;
-  letter-spacing: 0.4px;
+  letter-spacing: 0.6px;
 }
 
-.katakana-table td {
-  padding: 8px 10px;
-  border-bottom: 1px solid var(--border-subtle);
+.katakana-table tbody tr {
+  background: linear-gradient(180deg, #f4ead6 0%, #dfd0b0 100%);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
+}
+
+.katakana-table tbody tr td {
+  padding: 6px 12px;
   font-size: 17px;
-  font-weight: 600;
-  color: var(--ink-piano);
+  font-weight: 800;
+  color: #151515;
   vertical-align: middle;
-  transition: background-color 0.15s ease;
+  border-top: 1px solid rgba(255, 255, 255, 0.7);
+  border-bottom: 1px solid #b59b68;
 }
 
-.katakana-table tr:hover td {
-  background-color: rgba(0, 194, 181, 0.12);
+.katakana-table tbody tr td:first-child {
+  border-left: 1.5px solid #b59b68;
+  border-top-left-radius: 8px;
+  border-bottom-left-radius: 8px;
 }
 
-.katakana-table tr.row-selected td {
-  background-color: rgba(0, 194, 181, 0.24);
+.katakana-table tbody tr td:last-child {
+  border-right: 1.5px solid #b59b68;
+  border-top-right-radius: 8px;
+  border-bottom-right-radius: 8px;
+}
+
+.katakana-table tbody tr:hover {
+  background: linear-gradient(180deg, #faf2e1 0%, #e7d8b9 100%);
+}
+
+.katakana-table tbody tr.row-selected {
+  background: linear-gradient(90deg, #ccf7f3 0%, #e8dec6 100%);
 }
 
 /* Insignias (pills) */
 .pill {
   display: inline-flex;
   align-items: center;
-  padding: 3px 9px;
-  border-radius: 6px;
+  padding: 3px 10px;
+  border-radius: 7px;
   font-weight: 800;
   font-size: 12px;
   text-transform: uppercase;
-  letter-spacing: 0.3px;
+  letter-spacing: 0.4px;
 }
 
-/* Modales de alto contraste */
+/* Modales elegantes oscuros con marco dorado */
 .modal-overlay {
   position: fixed;
   inset: 0;
-  background-color: rgba(15, 18, 24, 0.76);
-  backdrop-filter: blur(4px);
+  background-color: rgba(6, 9, 14, 0.82);
+  backdrop-filter: blur(5px);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -603,8 +762,8 @@ input[type="range"] {
 }
 
 .modal-content {
-  background: linear-gradient(180deg, #f8f1e2 0%, #ece0c8 100%);
-  border: 3px solid var(--ink-piano);
+  background: linear-gradient(180deg, #18202e 0%, #0f141d 100%);
+  border: 2px solid var(--border-gold);
   border-radius: 16px;
   width: 620px;
   max-width: 95vw;
@@ -612,8 +771,10 @@ input[type="range"] {
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  box-shadow: 0 28px 64px rgba(0, 0, 0, 0.55);
-  color: var(--ink-piano);
+  box-shadow:
+    0 28px 64px rgba(0, 0, 0, 0.8),
+    0 0 24px rgba(201, 160, 80, 0.25);
+  color: var(--ink-light);
 }
 
 .modal-header {
@@ -621,11 +782,11 @@ input[type="range"] {
   align-items: center;
   justify-content: space-between;
   padding: 12px 18px;
-  background: linear-gradient(180deg, #1e242d 0%, #12151a 100%);
-  color: #f6efe0;
+  background: linear-gradient(90deg, #2d2417 0%, #171e2b 50%, #2d2417 100%);
+  color: #f4d898;
   font-size: 20px;
   font-weight: 900;
-  border-bottom: 3px solid var(--accent-surf);
+  border-bottom: 1.5px solid var(--border-gold);
 }
 
 .modal-body {
@@ -643,11 +804,10 @@ input[type="range"] {
   justify-content: flex-end;
   gap: 10px;
   padding: 12px 18px;
-  background: linear-gradient(180deg, #e8dcc3 0%, #ddd0b4 100%);
-  border-top: 2px solid var(--ink-piano);
+  background: linear-gradient(180deg, #1c2331 0%, #121722 100%);
+  border-top: 1.5px solid rgba(201, 160, 80, 0.45);
 }
 
-/* Animaciones útiles */
 @keyframes spin {
   from {
     transform: rotate(0deg);
@@ -673,23 +833,23 @@ input[type="range"] {
   }
   .katakana-panel-header {
     padding: 6px 10px;
-    font-size: 16px;
+    font-size: 15.5px;
   }
   .katakana-panel-body {
     padding: 7px 8px;
     gap: 6px;
   }
   .katakana-bottom-section {
-    height: 190px;
+    height: 192px;
     min-height: 168px;
     padding: 2px 10px 6px 10px;
   }
   .btn {
-    min-height: 38px;
+    min-height: 36px;
     font-size: 14.5px;
     padding: 0 11px;
   }
-  .katakana-table td {
+  .katakana-table tbody tr td {
     padding: 5px 8px;
     font-size: 16px;
   }

@@ -247,21 +247,24 @@ export const CenterMonitorColumn: React.FC<CenterMonitorColumnProps> = ({
 
   return (
     <section className="katakana-panel" aria-label="Monitor de Karaoke y Controles">
-      {/* Cabecera Protagonista */}
+      {/* Cabecera Protagonista con Título en Oro y Cantante en Turquesa */}
       <div
         className="katakana-panel-header"
         style={{
-          backgroundColor: 'var(--ink-piano)',
-          color: '#f6efe0',
-          borderBottom: '2px solid var(--accent-surf)',
+          background:
+            'radial-gradient(ellipse at 50% 100%, rgba(0, 229, 209, 0.25) 0%, transparent 65%), ' +
+            'linear-gradient(90deg, #2b2318 0%, #171f2c 50%, #2b2318 100%)',
+          borderBottom: '1.5px solid rgba(201, 160, 80, 0.65)',
+          padding: '8px 14px',
         }}
       >
         <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0, flex: 1 }}>
           <span
             style={{
-              fontSize: '20px',
+              fontSize: '21px',
               fontWeight: 900,
-              color: '#f6efe0',
+              color: '#F3D285',
+              textShadow: '0 2px 6px rgba(0,0,0,0.7)',
               overflow: 'hidden',
               textOverflow: 'ellipsis',
               whiteSpace: 'nowrap',
@@ -269,25 +272,41 @@ export const CenterMonitorColumn: React.FC<CenterMonitorColumnProps> = ({
           >
             {preparedTrack ? cleanActiveTitle : 'MONITOR DE KARAOKE'}
           </span>
-          {preparedTrack && (
-            <span style={{ fontSize: '15px', fontWeight: 700, color: 'var(--accent-surf)' }}>
-              Cantante: {preparedTrack.singerName}
-            </span>
-          )}
+          <span style={{ fontSize: '15px', fontWeight: 700, color: '#26F2E2' }}>
+            {preparedTrack
+              ? `Cantante: ${preparedTrack.singerName}`
+              : previewSinger
+                ? `Próximo: ${previewSinger}`
+                : 'Escenario Katakana'}
+          </span>
         </div>
 
         <span
           className="pill"
           style={{
-            backgroundColor:
+            background:
               playbackState === 'PLAYING'
-                ? 'var(--accent-surf)'
+                ? 'linear-gradient(180deg, #2ef2e2 0%, #00b8aa 100%)'
                 : playbackState === 'PAUSED'
-                  ? '#f59e0b'
-                  : '#2e2e2e',
-            color: playbackState === 'PLAYING' || playbackState === 'PAUSED' ? '#151515' : '#f6efe0',
+                  ? 'linear-gradient(180deg, #ffc14d 0%, #e08b00 100%)'
+                  : 'linear-gradient(180deg, #2e3746 0%, #1b212b 100%)',
+            color:
+              playbackState === 'PLAYING' || playbackState === 'PAUSED' ? '#12151a' : '#f3d285',
+            border:
+              playbackState === 'PAUSED'
+                ? '1.5px solid #ffe099'
+                : playbackState === 'PLAYING'
+                  ? '1.5px solid #88fcf3'
+                  : '1px solid rgba(201,160,80,0.45)',
+            boxShadow:
+              playbackState === 'PAUSED'
+                ? '0 0 12px rgba(245, 166, 35, 0.5)'
+                : playbackState === 'PLAYING'
+                  ? '0 0 12px rgba(0, 229, 209, 0.5)'
+                  : 'none',
             fontSize: '13px',
-            padding: '4px 10px',
+            padding: '5px 14px',
+            borderRadius: '8px',
           }}
         >
           {playbackState === 'PLAYING'
@@ -621,29 +640,20 @@ export const CenterMonitorColumn: React.FC<CenterMonitorColumnProps> = ({
           </Btn09>
         </div>
 
-        {/* Controles de Tono (-6 a +6) y Velocidad (1.0x) */}
+        {/* Controles de Tono (-6 a +6) y Velocidad (1.0x) con cajitas crema como en el diseño */}
         <div
           style={{
             display: 'grid',
-            gridTemplateColumns: '1.15fr 0.85fr',
+            gridTemplateColumns: '1.12fr 0.88fr',
             gap: '8px',
             flexShrink: 0,
           }}
         >
           {/* Cambiador de Tonos */}
-          <div className="katakana-card" style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+          <div className="katakana-card" style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <span style={{ fontSize: '15px', fontWeight: 800 }}>Tono (Semitonos)</span>
-              <span
-                className="pill"
-                style={{
-                  backgroundColor: pitchSemitones !== 0 ? 'var(--accent-surf)' : 'var(--bg-surface-warm)',
-                  color: 'var(--ink-piano)',
-                  border: '1.5px solid var(--ink-piano)',
-                  fontSize: '14px',
-                  fontFamily: 'var(--font-mono)',
-                }}
-              >
+              <span style={{ fontSize: '15px', fontWeight: 800, color: '#f3efe6' }}>Tono (Semitonos)</span>
+              <span className="katakana-value-box">
                 {pitchSemitones > 0 ? `+${pitchSemitones}` : pitchSemitones}
               </span>
             </div>
@@ -654,10 +664,10 @@ export const CenterMonitorColumn: React.FC<CenterMonitorColumnProps> = ({
                 className="btn btn-compact"
                 onClick={() => onChangePitch(Math.max(-6, pitchSemitones - 1))}
                 disabled={pitchSemitones <= -6}
-                style={{ minWidth: '36px', padding: 0 }}
+                style={{ minWidth: '34px', padding: 0 }}
                 title="Bajar 1 semitono"
               >
-                <Minus size={16} />
+                <Minus size={15} />
               </button>
               <input
                 type="range"
@@ -673,17 +683,17 @@ export const CenterMonitorColumn: React.FC<CenterMonitorColumnProps> = ({
                 className="btn btn-compact"
                 onClick={() => onChangePitch(Math.min(6, pitchSemitones + 1))}
                 disabled={pitchSemitones >= 6}
-                style={{ minWidth: '36px', padding: 0 }}
+                style={{ minWidth: '34px', padding: 0 }}
                 title="Subir 1 semitono"
               >
-                <Plus size={16} />
+                <Plus size={15} />
               </button>
               <button
                 type="button"
                 className="btn btn-compact"
                 onClick={() => onChangePitch(0)}
                 disabled={pitchSemitones === 0}
-                style={{ minWidth: '36px', padding: '0 8px', fontWeight: 800 }}
+                style={{ minWidth: '34px', padding: '0 8px', fontWeight: 800 }}
                 title="Restablecer tono original (0)"
               >
                 0
@@ -692,20 +702,11 @@ export const CenterMonitorColumn: React.FC<CenterMonitorColumnProps> = ({
           </div>
 
           {/* Control de Velocidad */}
-          <div className="katakana-card" style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+          <div className="katakana-card" style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <span style={{ fontSize: '15px', fontWeight: 800 }}>Velocidad</span>
-              <span
-                className="pill"
-                style={{
-                  backgroundColor: playbackSpeed !== 1 ? 'var(--accent-surf)' : 'var(--bg-surface-warm)',
-                  color: 'var(--ink-piano)',
-                  border: '1.5px solid var(--ink-piano)',
-                  fontSize: '14px',
-                  fontFamily: 'var(--font-mono)',
-                }}
-              >
-                {playbackSpeed.toFixed(2)}x
+              <span style={{ fontSize: '15px', fontWeight: 800, color: '#f3efe6' }}>Velocidad</span>
+              <span className="katakana-value-box">
+                {playbackSpeed.toFixed(2)}X
               </span>
             </div>
 
@@ -741,8 +742,7 @@ export const CenterMonitorColumn: React.FC<CenterMonitorColumnProps> = ({
             alignItems: 'center',
             gap: '8px',
             flexShrink: 0,
-            backgroundColor: isVolumeMemorized ? 'rgba(0, 194, 181, 0.14)' : 'var(--bg-surface-raised)',
-            borderColor: isVolumeMemorized ? 'var(--accent-surf-dark)' : 'var(--border-subtle)',
+            borderColor: isVolumeMemorized ? '#00d8c8' : 'rgba(190, 160, 100, 0.35)',
           }}
         >
           <button
@@ -750,12 +750,12 @@ export const CenterMonitorColumn: React.FC<CenterMonitorColumnProps> = ({
             className={`btn btn-compact ${karaokeMuted ? 'btn-danger' : ''}`}
             onClick={onToggleKaraokeMute}
             title="Silenciar Karaoke"
-            style={{ minWidth: '40px', padding: '0 8px' }}
+            style={{ minWidth: '38px', padding: '0 8px' }}
           >
-            {karaokeMuted ? <VolumeX size={18} /> : <Volume2 size={18} />}
+            {karaokeMuted ? <VolumeX size={17} /> : <Volume2 size={17} />}
           </button>
 
-          <span style={{ fontSize: '15px', fontWeight: 800, whiteSpace: 'nowrap' }}>Vol. Karaoke:</span>
+          <span style={{ fontSize: '14.5px', fontWeight: 800, whiteSpace: 'nowrap', color: '#f3efe6' }}>Vol. Karaoke:</span>
 
           <input
             type="range"
@@ -769,10 +769,11 @@ export const CenterMonitorColumn: React.FC<CenterMonitorColumnProps> = ({
           <span
             style={{
               fontFamily: 'var(--font-mono)',
-              fontSize: '17px',
+              fontSize: '16px',
               fontWeight: 900,
-              minWidth: '50px',
+              minWidth: '48px',
               textAlign: 'right',
+              color: '#f3efe6',
             }}
           >
             {karaokeMuted ? 'MUTE' : `${karaokeVolume}%`}
@@ -789,8 +790,8 @@ export const CenterMonitorColumn: React.FC<CenterMonitorColumnProps> = ({
                 : 'Guardar este volumen para esta canción automáticamente en futuras reproducciones'
             }
           >
-            {isVolumeMemorized ? <BookmarkCheck size={17} /> : <Bookmark size={17} />}
-            Memorizar Volumen
+            {isVolumeMemorized ? <BookmarkCheck size={16} /> : <Bookmark size={16} />}
+            Memorizar
           </button>
         </div>
       </div>

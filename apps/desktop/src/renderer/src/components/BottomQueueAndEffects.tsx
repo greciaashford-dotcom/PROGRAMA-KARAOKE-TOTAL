@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import {
   ListOrdered,
+  Users,
   History,
   Play,
   Edit2,
@@ -59,7 +60,7 @@ export const BottomQueueAndEffects: React.FC<BottomQueueAndEffectsProps> = ({
         {/* Cabecera compartida: Cola + Pestañas + Barra de Efectos Rápidos */}
         <div className="katakana-panel-header" style={{ padding: '6px 12px', flexWrap: 'wrap' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <ListOrdered size={20} />
+            <ListOrdered size={20} color="#F3D285" />
             <span style={{ fontSize: '18px', fontWeight: 900 }}>
               COLA Y ESCENARIO ({activeItems.length})
             </span>
@@ -67,14 +68,15 @@ export const BottomQueueAndEffects: React.FC<BottomQueueAndEffectsProps> = ({
             <div style={{ display: 'flex', gap: '6px', marginLeft: '8px' }}>
               <button
                 type="button"
-                className={`btn btn-compact ${activeTab === 'ACTIVE' ? 'btn-surf' : ''}`}
+                className={`btn btn-compact ${activeTab === 'ACTIVE' ? 'btn-surf' : 'btn-dark'}`}
                 onClick={() => setActiveTab('ACTIVE')}
               >
+                <Users size={15} />
                 Activos ({activeItems.length})
               </button>
               <button
                 type="button"
-                className={`btn btn-compact ${activeTab === 'HISTORY' ? 'btn-surf' : ''}`}
+                className={`btn btn-compact ${activeTab === 'HISTORY' ? 'btn-surf' : 'btn-dark'}`}
                 onClick={() => setActiveTab('HISTORY')}
               >
                 <History size={15} />
@@ -85,34 +87,34 @@ export const BottomQueueAndEffects: React.FC<BottomQueueAndEffectsProps> = ({
 
           {/* Barra compacta de efectos rápidos */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <span style={{ fontSize: '14px', fontWeight: 800, color: 'var(--ink-secondary)', marginRight: '2px' }}>
+            <span style={{ fontSize: '14px', fontWeight: 800, color: '#D4DCE8', marginRight: '2px' }}>
               EFECTOS:
             </span>
             <button
               type="button"
-              className="btn btn-compact"
+              className="btn btn-dark btn-compact"
               onClick={onTriggerApplause}
               title="Reproducir efecto de Aplausos (6s)"
             >
-              <Sparkles size={16} />
+              <Sparkles size={15} color="#F3D285" />
               Aplausos
             </button>
             <button
               type="button"
-              className="btn btn-compact"
+              className="btn btn-dark btn-compact"
               onClick={onTriggerCheers}
               title="Reproducir efecto de Ovaciones y Vítores"
             >
-              <PartyPopper size={16} />
+              <PartyPopper size={15} color="#F3D285" />
               Ovaciones
             </button>
             <button
               type="button"
-              className="btn btn-compact"
+              className="btn btn-dark btn-compact"
               onClick={onTriggerLaughter}
               title="Reproducir efecto de Risas de sala"
             >
-              <Smile size={16} />
+              <Smile size={15} color="#F3D285" />
               Risas
             </button>
           </div>
@@ -128,8 +130,8 @@ export const BottomQueueAndEffects: React.FC<BottomQueueAndEffectsProps> = ({
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  color: 'var(--ink-muted)',
-                  fontSize: '18px',
+                  color: '#95A3B8',
+                  fontSize: '17px',
                   fontWeight: 700,
                   padding: '16px',
                   textAlign: 'center',
@@ -141,12 +143,12 @@ export const BottomQueueAndEffects: React.FC<BottomQueueAndEffectsProps> = ({
               <table className="katakana-table">
                 <thead>
                   <tr>
-                    <th style={{ width: '108px' }}>Orden</th>
+                    <th style={{ width: '115px' }}>Orden</th>
                     <th>Título</th>
-                    <th style={{ width: '220px' }}>Cantante</th>
-                    <th style={{ width: '112px', textAlign: 'center' }}>Tono</th>
-                    <th style={{ width: '125px', textAlign: 'center' }}>Volumen</th>
-                    <th style={{ width: '270px', textAlign: 'right' }}>Acciones</th>
+                    <th style={{ width: '210px' }}>Cantante</th>
+                    <th style={{ width: '105px', textAlign: 'center' }}>Tono</th>
+                    <th style={{ width: '120px', textAlign: 'center' }}>Volumen</th>
+                    <th style={{ width: '285px', textAlign: 'right' }}>Acciones</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -155,39 +157,53 @@ export const BottomQueueAndEffects: React.FC<BottomQueueAndEffectsProps> = ({
                     const isPlaying = item.status === 'PLAYING';
                     const cleanTitle = cleanDisplayTitle(item.song?.title);
                     const assetKey = item.song?.mediaAssetId || '';
-                    const memVol = assetKey && memorizedSongs[assetKey] !== undefined ? memorizedSongs[assetKey] : null;
+                    const memVol =
+                      assetKey && memorizedSongs[assetKey] !== undefined
+                        ? memorizedSongs[assetKey]
+                        : null;
                     const displayVol = memVol !== null ? memVol : defaultKaraokeVolume;
 
                     return (
                       <tr key={item.id} className={isPlaying ? 'row-selected' : ''}>
                         <td>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
                             <span
                               style={{
                                 fontFamily: 'var(--font-mono)',
                                 fontWeight: 900,
                                 fontSize: '18px',
                                 minWidth: '30px',
+                                color: '#151515',
                               }}
                             >
                               #{item.position}
                             </span>
                             <button
                               type="button"
-                              className="btn btn-compact"
+                              className="btn btn-dark btn-compact"
                               onClick={() => onMoveItem(globalIndex, 'UP')}
                               disabled={globalIndex === 0 || isPlaying}
-                              style={{ minWidth: '28px', height: '28px', minHeight: '28px', padding: 0 }}
+                              style={{
+                                minWidth: '28px',
+                                height: '28px',
+                                minHeight: '28px',
+                                padding: 0,
+                              }}
                               title="Subir en la cola"
                             >
                               <ArrowUp size={14} />
                             </button>
                             <button
                               type="button"
-                              className="btn btn-compact"
+                              className="btn btn-dark btn-compact"
                               onClick={() => onMoveItem(globalIndex, 'DOWN')}
                               disabled={globalIndex === safeQueue.length - 1 || isPlaying}
-                              style={{ minWidth: '28px', height: '28px', minHeight: '28px', padding: 0 }}
+                              style={{
+                                minWidth: '28px',
+                                height: '28px',
+                                minHeight: '28px',
+                                padding: 0,
+                              }}
                               title="Bajar en la cola"
                             >
                               <ArrowDown size={14} />
@@ -197,14 +213,16 @@ export const BottomQueueAndEffects: React.FC<BottomQueueAndEffectsProps> = ({
 
                         <td>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            <span style={{ fontWeight: 800, fontSize: '18px' }}>{cleanTitle}</span>
+                            <span style={{ fontWeight: 900, fontSize: '18px', color: '#151515' }}>
+                              {cleanTitle}
+                            </span>
                             {isPlaying && (
                               <span
                                 className="pill"
                                 style={{
-                                  backgroundColor: 'var(--accent-surf)',
-                                  color: 'var(--ink-piano)',
-                                  border: '1.5px solid var(--ink-piano)',
+                                  backgroundColor: '#00E5D1',
+                                  color: '#071F1D',
+                                  border: '1.5px solid #071F1D',
                                 }}
                               >
                                 EN ESCENARIO
@@ -213,22 +231,12 @@ export const BottomQueueAndEffects: React.FC<BottomQueueAndEffectsProps> = ({
                           </div>
                         </td>
 
-                        <td style={{ fontWeight: 800, fontSize: '18px' }}>
+                        <td style={{ fontWeight: 900, fontSize: '18px', color: '#151515' }}>
                           {item.singer?.displayName || 'Cantante'}
                         </td>
 
                         <td style={{ textAlign: 'center' }}>
-                          <span
-                            className="pill"
-                            style={{
-                              fontFamily: 'var(--font-mono)',
-                              fontSize: '15px',
-                              backgroundColor:
-                                item.keyShift !== 0 ? 'var(--accent-surf)' : 'var(--bg-surface-warm)',
-                              color: 'var(--ink-piano)',
-                              border: '1.5px solid var(--ink-piano)',
-                            }}
-                          >
+                          <span className="katakana-value-box">
                             {item.keyShift > 0 ? `+${item.keyShift}` : item.keyShift}
                           </span>
                         </td>
@@ -240,13 +248,17 @@ export const BottomQueueAndEffects: React.FC<BottomQueueAndEffectsProps> = ({
                               alignItems: 'center',
                               gap: '4px',
                               fontFamily: 'var(--font-mono)',
-                              fontSize: '16px',
-                              fontWeight: 800,
-                              color: memVol !== null ? 'var(--accent-surf-dark)' : 'var(--ink-secondary)',
+                              fontSize: '17px',
+                              fontWeight: 900,
+                              color: '#151515',
                             }}
-                            title={memVol !== null ? 'Volumen memorizado para esta canción' : 'Volumen general'}
+                            title={
+                              memVol !== null
+                                ? 'Volumen memorizado para esta canción'
+                                : 'Volumen general'
+                            }
                           >
-                            {memVol !== null && <BookmarkCheck size={15} />}
+                            {memVol !== null && <BookmarkCheck size={15} color="#007F77" />}
                             {displayVol}%
                           </span>
                         </td>
@@ -265,7 +277,7 @@ export const BottomQueueAndEffects: React.FC<BottomQueueAndEffectsProps> = ({
 
                             <button
                               type="button"
-                              className="btn btn-compact"
+                              className="btn btn-dark btn-compact"
                               onClick={() => onEditItem(item)}
                               title="Editar cantante o tono de este turno"
                             >
@@ -297,7 +309,7 @@ export const BottomQueueAndEffects: React.FC<BottomQueueAndEffectsProps> = ({
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                color: 'var(--ink-muted)',
+                color: '#95A3B8',
                 fontSize: '17px',
                 fontWeight: 600,
               }}
@@ -318,11 +330,13 @@ export const BottomQueueAndEffects: React.FC<BottomQueueAndEffectsProps> = ({
               <tbody>
                 {historyItems.map((item) => (
                   <tr key={item.id}>
-                    <td style={{ fontFamily: 'var(--font-mono)' }}>#{item.position}</td>
-                    <td>{cleanDisplayTitle(item.song?.title)}</td>
-                    <td>{item.singer?.displayName}</td>
+                    <td style={{ fontFamily: 'var(--font-mono)', color: '#151515' }}>
+                      #{item.position}
+                    </td>
+                    <td style={{ color: '#151515' }}>{cleanDisplayTitle(item.song?.title)}</td>
+                    <td style={{ color: '#151515' }}>{item.singer?.displayName}</td>
                     <td>
-                      <span className="pill" style={{ backgroundColor: 'var(--bg-surface-warm)', border: '1px solid var(--ink-piano)' }}>
+                      <span className="katakana-value-box" style={{ fontSize: '12px' }}>
                         {item.status === 'COMPLETED'
                           ? 'COMPLETADO'
                           : item.status === 'SKIPPED'
@@ -336,7 +350,7 @@ export const BottomQueueAndEffects: React.FC<BottomQueueAndEffectsProps> = ({
                       {item.status !== 'COMPLETED' && (
                         <button
                           type="button"
-                          className="btn btn-compact"
+                          className="btn btn-dark btn-compact"
                           onClick={() => onRequeueItem(item.id, 'QUEUED')}
                         >
                           <RotateCcw size={14} />

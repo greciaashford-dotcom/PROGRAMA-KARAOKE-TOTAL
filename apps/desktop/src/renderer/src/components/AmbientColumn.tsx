@@ -330,14 +330,17 @@ export const AmbientColumn: React.FC<AmbientColumnProps> = ({
       {/* Cabecera */}
       <div className="katakana-panel-header">
         <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <Music size={20} />
+          <Music size={19} color="#F3D285" />
           MÚSICA AMBIENTE (MP3)
         </span>
         <span
           className="pill"
           style={{
-            backgroundColor: isPlaying ? 'var(--accent-surf)' : 'var(--ink-piano)',
-            color: isPlaying ? 'var(--ink-piano)' : '#f6efe0',
+            background: isPlaying
+              ? 'linear-gradient(180deg, #2ef2e2 0%, #00b8aa 100%)'
+              : 'linear-gradient(180deg, #262c36 0%, #151920 100%)',
+            color: isPlaying ? '#0b1116' : '#f3d285',
+            border: isPlaying ? '1px solid #7ffbf1' : '1px solid rgba(201, 160, 80, 0.5)',
           }}
         >
           {isPlaying ? 'SONANDO' : `${tracks.length} MP3`}
@@ -348,8 +351,8 @@ export const AmbientColumn: React.FC<AmbientColumnProps> = ({
       <div
         style={{
           padding: '8px 10px',
-          borderBottom: '1.5px solid var(--border-subtle)',
-          backgroundColor: 'var(--bg-surface-raised)',
+          borderBottom: '1px solid rgba(201, 160, 80, 0.3)',
+          backgroundColor: 'rgba(15, 20, 29, 0.55)',
           display: 'flex',
           flexDirection: 'column',
           gap: '6px',
@@ -425,7 +428,7 @@ export const AmbientColumn: React.FC<AmbientColumnProps> = ({
             </div>
           </div>
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
             {tracks.map((song, idx) => {
               const isSelected = idx === currentIndex;
               const cleanName = cleanDisplayTitle(song.title);
@@ -438,20 +441,7 @@ export const AmbientColumn: React.FC<AmbientColumnProps> = ({
                       setWantsToPlay(true);
                     }
                   }}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    gap: '8px',
-                    padding: '9px 10px',
-                    borderRadius: '8px',
-                    cursor: 'pointer',
-                    backgroundColor: isSelected ? 'var(--accent-surf)' : 'var(--bg-surface-raised)',
-                    border: isSelected ? '2px solid var(--ink-piano)' : '1.5px solid var(--border-subtle)',
-                    color: 'var(--ink-piano)',
-                    fontSize: '17px',
-                    fontWeight: isSelected ? 800 : 600,
-                  }}
+                  className={`katakana-mp3-row ${isSelected ? 'selected' : ''}`}
                 >
                   <span
                     style={{
@@ -472,15 +462,15 @@ export const AmbientColumn: React.FC<AmbientColumnProps> = ({
                     style={{
                       background: 'transparent',
                       border: 'none',
-                      color: 'var(--ink-piano)',
+                      color: '#151515',
                       cursor: 'pointer',
-                      padding: '4px',
+                      padding: '3px',
                       display: 'flex',
                       alignItems: 'center',
-                      opacity: 0.75,
+                      opacity: 0.78,
                     }}
                   >
-                    <Trash2 size={17} />
+                    <Trash2 size={16} />
                   </button>
                 </div>
               );
@@ -493,8 +483,8 @@ export const AmbientColumn: React.FC<AmbientColumnProps> = ({
       <div
         style={{
           padding: '8px 10px',
-          borderTop: '2px solid var(--ink-piano)',
-          backgroundColor: 'var(--bg-surface-warm)',
+          borderTop: '1.5px solid rgba(201, 160, 80, 0.45)',
+          background: 'linear-gradient(180deg, #1b2230 0%, #10151e 100%)',
           display: 'flex',
           flexDirection: 'column',
           gap: '7px',
@@ -503,7 +493,7 @@ export const AmbientColumn: React.FC<AmbientColumnProps> = ({
       >
         {/* Barra de progreso MP3 */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <span style={{ fontFamily: 'var(--font-mono)', fontSize: '14px', fontWeight: 700, minWidth: '40px' }}>
+          <span style={{ fontFamily: 'var(--font-mono)', fontSize: '14px', fontWeight: 700, minWidth: '38px', color: '#f3efe6' }}>
             {formatTimeMMSS(currentTimeMs)}
           </span>
           <input
@@ -521,7 +511,7 @@ export const AmbientColumn: React.FC<AmbientColumnProps> = ({
             }}
             style={{ flex: 1 }}
           />
-          <span style={{ fontFamily: 'var(--font-mono)', fontSize: '14px', fontWeight: 700, minWidth: '40px', textAlign: 'right' }}>
+          <span style={{ fontFamily: 'var(--font-mono)', fontSize: '14px', fontWeight: 700, minWidth: '38px', textAlign: 'right', color: '#f3efe6' }}>
             {formatTimeMMSS(durationMs)}
           </span>
         </div>
@@ -534,7 +524,7 @@ export const AmbientColumn: React.FC<AmbientColumnProps> = ({
             onClick={onToggleAmbientMute}
             title="Silenciar música de ambiente"
           >
-            {ambientMuted ? <VolumeX size={18} /> : <Volume2 size={18} />}
+            {ambientMuted ? <VolumeX size={17} /> : <Volume2 size={17} />}
             Mute
           </button>
 
@@ -544,7 +534,7 @@ export const AmbientColumn: React.FC<AmbientColumnProps> = ({
             onClick={handlePlayPause}
             title="Reproducir o pausar música de ambiente"
           >
-            {isPlaying ? <Pause size={17} /> : <Play size={17} fill="currentColor" />}
+            {isPlaying ? <Pause size={16} /> : <Play size={16} fill="currentColor" />}
             {isPlaying ? 'Pausa' : 'Play'}
           </button>
 
@@ -554,7 +544,7 @@ export const AmbientColumn: React.FC<AmbientColumnProps> = ({
             onClick={handleStop}
             title="Detener música de ambiente"
           >
-            <Square size={16} fill="currentColor" />
+            <Square size={15} fill="currentColor" />
             Stop
           </button>
 
@@ -564,14 +554,14 @@ export const AmbientColumn: React.FC<AmbientColumnProps> = ({
             onClick={handleStartFromBeginning}
             title="Iniciar canción MP3 seleccionada desde el principio"
           >
-            <PlayCircle size={17} />
+            <PlayCircle size={16} />
             Iniciar
           </button>
         </div>
 
         {/* Deslizador de volumen de ambiente */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <span style={{ fontSize: '15px', fontWeight: 800, whiteSpace: 'nowrap' }}>Vol. MP3:</span>
+          <span style={{ fontSize: '14.5px', fontWeight: 800, whiteSpace: 'nowrap', color: '#f3efe6' }}>Vol. MP3:</span>
           <input
             type="range"
             min={0}
@@ -583,11 +573,11 @@ export const AmbientColumn: React.FC<AmbientColumnProps> = ({
           <span
             style={{
               fontFamily: 'var(--font-mono)',
-              fontSize: '16px',
+              fontSize: '15.5px',
               fontWeight: 800,
-              minWidth: '48px',
+              minWidth: '46px',
               textAlign: 'right',
-              color: ambientMuted ? 'var(--status-error)' : 'var(--ink-piano)',
+              color: ambientMuted ? '#ff6b6b' : '#f3efe6',
             }}
           >
             {ambientMuted ? 'MUTE' : `${ambientVolume}%`}

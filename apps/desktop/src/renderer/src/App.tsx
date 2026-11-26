@@ -15,7 +15,7 @@ import {
   Monitor,
   LifeBuoy,
   AlertOctagon,
-  Disc,
+  Mic,
   CheckCircle2,
   AlertTriangle,
 } from 'lucide-react';
@@ -1016,10 +1016,12 @@ export const App: React.FC = () => {
 
   return (
     <div className="katakana-app">
-      {/* Barra Superior (Negro Piano 30%) */}
+      {/* Barra Superior Studio Luxury (Obsidiana + Oro + Turquesa) */}
       <header className="katakana-topbar">
         <div className="katakana-brand">
-          <Disc size={26} color="#00C2B5" />
+          <div className="katakana-logo-circle">
+            <Mic size={20} strokeWidth={2.4} />
+          </div>
           <span>Katakana Karaoke</span>
           <span className="katakana-brand-pill">KARAOKE TOTAL</span>
         </div>
@@ -1032,7 +1034,8 @@ export const App: React.FC = () => {
             gap: '8px',
             fontSize: '15px',
             fontWeight: 700,
-            color: notification.type === 'error' ? '#fca5a5' : '#e4d7bc',
+            fontStyle: 'italic',
+            color: notification.type === 'error' ? '#fca5a5' : '#F3EFE6',
             overflow: 'hidden',
             textOverflow: 'ellipsis',
             whiteSpace: 'nowrap',
@@ -1042,7 +1045,7 @@ export const App: React.FC = () => {
           {notification.type === 'error' ? (
             <AlertTriangle size={18} color="#f87171" style={{ flexShrink: 0 }} />
           ) : (
-            <CheckCircle2 size={18} color="#00C2B5" style={{ flexShrink: 0 }} />
+            <CheckCircle2 size={18} color="#26F2E2" style={{ flexShrink: 0 }} />
           )}
           <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{notification.text}</span>
         </div>
@@ -1050,7 +1053,7 @@ export const App: React.FC = () => {
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           <button
             type="button"
-            className={`btn btn-compact ${isPublicScreenOpen ? 'btn-surf' : ''}`}
+            className={`btn btn-compact ${isPublicScreenOpen ? 'btn-surf' : 'btn-dark'}`}
             onClick={handleTogglePublicScreen}
             style={{ minHeight: '38px' }}
           >
@@ -1061,7 +1064,7 @@ export const App: React.FC = () => {
           {isPublicScreenOpen && (
             <button
               type="button"
-              className="btn btn-compact"
+              className="btn btn-dark btn-compact"
               onClick={handleRescuePublicScreen}
               title="Rescatar Pantalla Pública al monitor principal"
               style={{ minWidth: '38px', padding: '0 8px' }}

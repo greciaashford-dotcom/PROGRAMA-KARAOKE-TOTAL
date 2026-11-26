@@ -13,7 +13,7 @@ export function createOperatorWindow(): BrowserWindow {
     minWidth: 1200,
     minHeight: 700,
     title: 'Katakana Karaoke — Karaoke Total',
-    backgroundColor: '#EEE3CC',
+    backgroundColor: '#0B0F17',
     show: true,
     webPreferences: {
       nodeIntegration: false,
