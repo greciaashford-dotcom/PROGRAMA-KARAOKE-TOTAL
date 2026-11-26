@@ -9,6 +9,8 @@ export interface PublicOverlayState {
   singerName: string | null;
   songTitle: string | null;
   quickMessage: string | null;
+  isApplauseActive?: boolean;
+  playbackSpeed?: number;
   hasCustomBackground: boolean;
   backgroundVersion: number;
 }
@@ -25,6 +27,8 @@ export function registerVolumesHandlers(
     singerName: null,
     songTitle: null,
     quickMessage: null,
+    isApplauseActive: false,
+    playbackSpeed: 1,
     hasCustomBackground: Boolean(volumesStore.getAll().publicBackgroundPath),
     backgroundVersion: Date.now(),
   };

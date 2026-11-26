@@ -14,6 +14,7 @@ import {
   Minus,
   Plus,
   Power,
+  Disc,
 } from 'lucide-react';
 import { PlaybackStatus, QueueItemDTO } from '@karaoke/contracts';
 import { PlayerPrepareResult, PublicOverlayStateDTO } from '../../../preload/types.js';
@@ -94,10 +95,12 @@ export const CenterMonitorColumn: React.FC<CenterMonitorColumnProps> = ({
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const playbackStateRef = useRef<PlaybackStatus>(playbackState);
   const lastReportedTimeRef = useRef<number>(0);
+  const introTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [currentTimeMs, setCurrentTimeMs] = useState<number>(0);
   const [durationMs, setDurationMs] = useState<number>(0);
   const [isSeeking, setIsSeeking] = useState<boolean>(false);
+  const [showIntroBanner, setShowIntroBanner] = useState<boolean>(false);
 
   useEffect(() => {
     playbackStateRef.current = playbackState;
@@ -122,15 +125,26 @@ export const CenterMonitorColumn: React.FC<CenterMonitorColumnProps> = ({
       lastReportedTimeRef.current = 0;
       setCurrentTimeMs(0);
       setDurationMs(0);
+      setShowIntroBanner(false);
     }
   }, [stopSignal]);
 
   // Cargar nueva pista en el monitor solo cuando cambia la pista preparada
   useEffect(() => {
+    if (introTimeoutRef.current) {
+      clearTimeout(introTimeoutRef.current);
+      introTimeoutRef.current = null;
+    }
+
     if (preparedTrack) {
       setDurationMs(preparedTrack.durationMs || 0);
       setCurrentTimeMs(0);
       lastReportedTimeRef.current = 0;
+      setShowIntroBanner(true);
+      introTimeoutRef.current = setTimeout(() => {
+        setShowIntroBanner(false);
+      }, 5500);
+
       if (videoRef.current) {
         audioMixerEngine.registerKaraokeElement(videoRef.current);
         videoRef.current.currentTime = 0;
@@ -145,7 +159,12 @@ export const CenterMonitorColumn: React.FC<CenterMonitorColumnProps> = ({
       lastReportedTimeRef.current = 0;
       setCurrentTimeMs(0);
       setDurationMs(0);
+      setShowIntroBanner(false);
     }
+
+    return () => {
+      if (introTimeoutRef.current) clearTimeout(introTimeoutRef.current);
+    };
   }, [preparedTrack?.mediaUrl, preparedTrack?.queueItemId]);
 
   // Aplicar volumen, pitch y velocidad en tiempo real (audio limpio y directo, SIN crossfade)
@@ -200,10 +219,12 @@ export const CenterMonitorColumn: React.FC<CenterMonitorColumnProps> = ({
         durationMs || (videoRef.current ? videoRef.current.duration * 1000 : 0) || 100000;
       const clamped = Math.max(0, Math.min(maxDur, newMs));
       setCurrentTimeMs(clamped);
+      lastReportedTimeRef.current = clamped;
       if (videoRef.current) {
         videoRef.current.currentTime = clamped / 1000;
       }
       await window.karaokeAPI.sendPlayerCommand({ command: 'SEEK', positionMs: clamped });
+      await window.karaokeAPI.updatePlayerProgress(clamped, durationMs).catch(() => {});
     },
     [durationMs],
   );
@@ -242,6 +263,9 @@ export const CenterMonitorColumn: React.FC<CenterMonitorColumnProps> = ({
     publicOverlay.songTitle || nextQueuedItem?.song?.title || '',
   );
 
+  const effectiveApplause = Boolean(isApplauseActive || publicOverlay.isApplauseActive);
+  const effectiveSessionActive = Boolean(isSessionActive || publicOverlay.sessionActive);
+
   return (
     <section className="katakana-panel" aria-label="Monitor de Karaoke y Controles">
       {/* Cabecera Protagonista con Título en Oro y Cantante en Turquesa */}
@@ -271,7 +295,7 @@ export const CenterMonitorColumn: React.FC<CenterMonitorColumnProps> = ({
               ? cleanActiveTitle
               : isCountdownActive && countdownTitle
                 ? countdownTitle
-                : isSessionActive
+                : effectiveSessionActive
                   ? 'SOLICITA TU CANCIÓN'
                   : 'MONITOR DE KARAOKE'}
           </span>
@@ -280,7 +304,7 @@ export const CenterMonitorColumn: React.FC<CenterMonitorColumnProps> = ({
               ? `Cantante: ${preparedTrack.singerName}`
               : isCountdownActive && countdownSinger
                 ? `Próximo cantante: ${countdownSinger} (${formatCountdownMMSS(publicOverlay.countdownSec ?? 0)})`
-                : isSessionActive
+                : effectiveSessionActive
                   ? nextQueuedItem
                     ? `En cola listo para lanzar: ${nextQueuedItem.singer?.displayName || 'Cantante'}`
                     : 'Sesión activa • Música de ambiente'
@@ -288,62 +312,60 @@ export const CenterMonitorColumn: React.FC<CenterMonitorColumnProps> = ({
           </span>
         </div>
 
-        <span
-          className="pill"
-          style={{
-            background:
-              playbackState === 'PLAYING'
-                ? 'linear-gradient(180deg, #2ef2e2 0%, #00b8aa 100%)'
-                : playbackState === 'PAUSED' || isCountdownActive
-                  ? 'linear-gradient(180deg, #ffc14d 0%, #e08b00 100%)'
-                  : isSessionActive
-                    ? 'linear-gradient(180deg, #2ef2e2 0%, #00b8aa 100%)'
-                    : 'linear-gradient(180deg, #2e3746 0%, #1b212b 100%)',
-            color:
-              playbackState === 'PLAYING' ||
-              playbackState === 'PAUSED' ||
-              isCountdownActive ||
-              isSessionActive
-                ? '#12151a'
-                : '#f3d285',
-            border:
-              playbackState === 'PAUSED' || isCountdownActive
-                ? '1.5px solid #ffe099'
-                : playbackState === 'PLAYING' || isSessionActive
-                  ? '1.5px solid #88fcf3'
-                  : '1px solid rgba(201,160,80,0.45)',
-            boxShadow:
-              playbackState === 'PAUSED' || isCountdownActive
-                ? '0 0 12px rgba(245, 166, 35, 0.5)'
-                : playbackState === 'PLAYING' || isSessionActive
-                  ? '0 0 12px rgba(0, 229, 209, 0.5)'
-                  : 'none',
-            fontSize: '13px',
-            padding: '5px 14px',
-            borderRadius: '8px',
-          }}
-        >
-          {playbackState === 'PLAYING'
-            ? 'EN DIRECTO'
-            : playbackState === 'PAUSED'
-              ? 'PAUSADO'
-              : isCountdownActive
-                ? `CONTEO ${formatCountdownMMSS(publicOverlay.countdownSec ?? 0)}`
-                : isSessionActive
-                  ? 'SESIÓN ACTIVA'
-                  : 'SIN SESIÓN'}
-        </span>
+        {!effectiveSessionActive ? (
+          <button
+            type="button"
+            className="btn btn-surf btn-compact"
+            onClick={onStartSession}
+            style={{ fontSize: '13px', fontWeight: 900, padding: '5px 12px' }}
+          >
+            <Power size={15} />
+            Iniciar Sesión
+          </button>
+        ) : (
+          <span
+            className="pill"
+            style={{
+              background:
+                playbackState === 'PLAYING'
+                  ? 'linear-gradient(180deg, #2ef2e2 0%, #00b8aa 100%)'
+                  : playbackState === 'PAUSED' || isCountdownActive
+                    ? 'linear-gradient(180deg, #ffc14d 0%, #e08b00 100%)'
+                    : 'linear-gradient(180deg, #2ef2e2 0%, #00b8aa 100%)',
+              color: '#12151a',
+              border:
+                playbackState === 'PAUSED' || isCountdownActive
+                  ? '1.5px solid #ffe099'
+                  : '1.5px solid #88fcf3',
+              boxShadow:
+                playbackState === 'PAUSED' || isCountdownActive
+                  ? '0 0 12px rgba(245, 166, 35, 0.5)'
+                  : '0 0 12px rgba(0, 229, 209, 0.5)',
+              fontSize: '13px',
+              padding: '5px 14px',
+              borderRadius: '8px',
+            }}
+          >
+            {playbackState === 'PLAYING'
+              ? 'EN DIRECTO'
+              : playbackState === 'PAUSED'
+                ? 'PAUSADO'
+                : isCountdownActive
+                  ? `CONTEO ${formatCountdownMMSS(publicOverlay.countdownSec ?? 0)}`
+                  : 'SESIÓN ACTIVA'}
+          </span>
+        )}
       </div>
 
       {/* Cuerpo central */}
       <div className="katakana-panel-body" style={{ padding: '10px', gap: '8px' }}>
-        {/* Monitor de Vídeo Grande (Espejo en vivo de la Pantalla Pública) */}
+        {/* Monitor de Vídeo Grande (Espejo 100% Sincronizado en Vivo de la Pantalla Pública) */}
         <div
           style={{
             width: '100%',
             flex: '1 1 220px',
             minHeight: '175px',
-            backgroundColor: '#151515',
+            backgroundColor: '#000000',
             borderRadius: '10px',
             border: '3px solid var(--ink-piano)',
             position: 'relative',
@@ -353,7 +375,7 @@ export const CenterMonitorColumn: React.FC<CenterMonitorColumnProps> = ({
             justifyContent: 'center',
           }}
         >
-          {/* Elemento <video> principal (Única fuente de audio de Karaoke -> cero eco) */}
+          {/* 1. Elemento <video> principal (Única fuente de audio de Karaoke -> cero eco) */}
           {preparedTrack && (
             <video
               ref={videoRef}
@@ -364,10 +386,17 @@ export const CenterMonitorColumn: React.FC<CenterMonitorColumnProps> = ({
                 if (!videoRef.current || isSeeking) return;
                 const ms = Math.round(videoRef.current.currentTime * 1000);
                 setCurrentTimeMs(ms);
-                if (Math.abs(ms - lastReportedTimeRef.current) > 1000) {
+                // Latido cada 250ms para mantener la Pantalla Pública sincronizada al milisegundo
+                if (Math.abs(ms - lastReportedTimeRef.current) >= 250) {
                   lastReportedTimeRef.current = ms;
                   window.karaokeAPI?.updatePlayerProgress(ms, durationMs).catch(() => {});
                 }
+              }}
+              onSeeked={() => {
+                if (!videoRef.current) return;
+                const ms = Math.round(videoRef.current.currentTime * 1000);
+                lastReportedTimeRef.current = ms;
+                window.karaokeAPI?.updatePlayerProgress(ms, durationMs).catch(() => {});
               }}
               onLoadedMetadata={() => {
                 if (videoRef.current) {
@@ -415,12 +444,12 @@ export const CenterMonitorColumn: React.FC<CenterMonitorColumnProps> = ({
             />
           )}
 
-          {/* Espejo en vivo del Fondo Katakana cuando no hay vídeo de karaoke activo */}
-          {!isVideoVisible && (
-            <div style={{ position: 'absolute', inset: 0 }}>
+          {/* Visualizador idéntico a Pantalla Pública si la pista de karaoke es solo audio */}
+          {isVideoVisible && isAudioOnly && (
+            <div style={{ position: 'absolute', inset: 0, zIndex: 5 }}>
               <img
                 src={bgUrl}
-                alt="Vista previa Pantalla Pública Katakana"
+                alt=""
                 style={{
                   width: '100%',
                   height: '100%',
@@ -428,8 +457,6 @@ export const CenterMonitorColumn: React.FC<CenterMonitorColumnProps> = ({
                   objectPosition: 'top center',
                 }}
               />
-
-              {/* Zona Libre 34% - 88% (Respetando Zona Prohibida 0% - 32% del logo Katakana) */}
               <div
                 style={{
                   position: 'absolute',
@@ -442,34 +469,173 @@ export const CenterMonitorColumn: React.FC<CenterMonitorColumnProps> = ({
                   alignItems: 'center',
                   justifyContent: 'center',
                   textAlign: 'center',
-                  fontFamily: 'Georgia, Cambria, serif',
-                  gap: '5px',
+                  fontFamily: 'Georgia, Cambria, "Times New Roman", serif',
+                  gap: '6px',
+                }}
+              >
+                <Disc
+                  size={34}
+                  color="#F5C76B"
+                  className={playbackState === 'PLAYING' ? 'spin' : ''}
+                  style={{ filter: 'drop-shadow(0 2px 8px rgba(0,0,0,0.9))' }}
+                />
+                {preparedTrack?.singerName && (
+                  <div
+                    style={{
+                      fontSize: '16px',
+                      fontWeight: 700,
+                      color: '#F5C76B',
+                      textShadow: '0 2px 10px rgba(0,0,0,0.95)',
+                    }}
+                  >
+                    {preparedTrack.singerName}
+                  </div>
+                )}
+                <div
+                  style={{
+                    fontSize: '21px',
+                    fontWeight: 800,
+                    color: '#FFFFFF',
+                    textShadow: '0 2px 12px rgba(0,0,0,0.95)',
+                    lineHeight: 1.15,
+                  }}
+                >
+                  {cleanActiveTitle}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Aviso discreto al inicio del vídeo (5.5s) idéntico a la Pantalla Pública */}
+          {isVideoVisible && !isAudioOnly && showIntroBanner && preparedTrack?.singerName && cleanActiveTitle && (
+            <div
+              style={{
+                position: 'absolute',
+                bottom: '14px',
+                left: '16px',
+                fontFamily: 'Georgia, Cambria, "Times New Roman", serif',
+                textShadow: '0 2px 10px rgba(0,0,0,0.98), 0 0 6px rgba(0,0,0,0.95)',
+                zIndex: 15,
+                pointerEvents: 'none',
+              }}
+            >
+              <div style={{ fontSize: '11px', color: '#F5C76B', fontWeight: 700, letterSpacing: '0.5px' }}>
+                Cantado por:
+              </div>
+              <div style={{ fontSize: '19px', color: '#FFFFFF', fontWeight: 800, lineHeight: 1.1 }}>
+                {preparedTrack.singerName}
+              </div>
+              <div style={{ fontSize: '14px', color: '#FFB830', fontWeight: 700, marginTop: '2px' }}>
+                {cleanActiveTitle}
+              </div>
+            </div>
+          )}
+
+          {/* Indicador de PAUSA idéntico a la Pantalla Pública */}
+          {isVideoVisible && playbackState === 'PAUSED' && (
+            <div
+              style={{
+                position: 'absolute',
+                top: '12px',
+                right: '14px',
+                color: '#F5C76B',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '5px',
+                fontSize: '14px',
+                fontWeight: 800,
+                fontFamily: 'Georgia, Cambria, serif',
+                textShadow: '0 2px 10px rgba(0,0,0,0.98)',
+                zIndex: 20,
+                pointerEvents: 'none',
+              }}
+            >
+              <Pause size={15} />
+              <span>PAUSA</span>
+            </div>
+          )}
+
+          {/* Mensaje rápido superpuesto durante vídeo idéntico a la Pantalla Pública */}
+          {isVideoVisible && publicOverlay.quickMessage && (
+            <div
+              style={{
+                position: 'absolute',
+                bottom: '12px',
+                left: '9%',
+                width: '82%',
+                textAlign: 'center',
+                fontFamily: 'Georgia, Cambria, "Times New Roman", serif',
+                fontSize: '17px',
+                fontWeight: 800,
+                color: '#FFFFFF',
+                textShadow: '0 2px 12px rgba(0,0,0,0.98), 0 0 8px rgba(0,0,0,0.95)',
+                zIndex: 25,
+                pointerEvents: 'none',
+              }}
+            >
+              {publicOverlay.quickMessage}
+            </div>
+          )}
+
+          {/* 2. Espejo 100% Sincronizado del Fondo General Katakana cuando no hay vídeo de karaoke activo */}
+          {!isVideoVisible && (
+            <div style={{ position: 'absolute', inset: 0 }}>
+              <img
+                src={bgUrl}
+                alt="Vista previa Pantalla Pública Katakana"
+                style={{
+                  width: '100%',
+                  height: '100%',
+                  objectFit: 'cover',
+                  objectPosition: 'top center',
+                  display: 'block',
+                }}
+              />
+
+              {/* Zona Libre 34% - 88% (Idéntica a Pantalla Pública) */}
+              <div
+                style={{
+                  position: 'absolute',
+                  top: '34%',
+                  height: '54%',
+                  left: '9%',
+                  width: '82%',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  justifyContent: isCountdownActive ? 'space-between' : 'center',
+                  textAlign: 'center',
+                  fontFamily: 'Georgia, Cambria, "Times New Roman", serif',
+                  pointerEvents: 'none',
+                  padding: '4px 0',
                 }}
               >
                 {publicOverlay.quickMessage ? (
                   <div
                     style={{
-                      fontSize: '20px',
-                      fontWeight: 700,
+                      fontSize: '21px',
+                      fontWeight: 800,
                       color: '#FFFFFF',
-                      textShadow: '0 2px 10px rgba(0,0,0,0.95)',
+                      textShadow: '0 3px 14px rgba(0,0,0,0.95)',
+                      lineHeight: 1.2,
+                      margin: 'auto 0',
                     }}
                   >
                     {publicOverlay.quickMessage}
                   </div>
-                ) : isApplauseActive ? (
+                ) : effectiveApplause ? (
                   <div
                     style={{
                       display: 'flex',
                       flexDirection: 'column',
                       alignItems: 'center',
-                      gap: '4px',
+                      gap: '5px',
                       color: '#F5C76B',
                       textShadow: '0 2px 10px rgba(0,0,0,0.95)',
                     }}
                   >
                     <Sparkles size={26} />
-                    <span style={{ fontSize: '19px', fontWeight: 700 }}>
+                    <span style={{ fontSize: '20px', fontWeight: 800 }}>
                       ¡APLAUSOS EN SALA!
                     </span>
                   </div>
@@ -477,55 +643,72 @@ export const CenterMonitorColumn: React.FC<CenterMonitorColumnProps> = ({
                   <>
                     <div
                       style={{
-                        fontSize: '11.5px',
-                        letterSpacing: '1.5px',
-                        textTransform: 'uppercase',
-                        color: '#F5C76B',
-                        fontWeight: 800,
-                        textShadow: '0 2px 8px rgba(0,0,0,0.95)',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '4px',
+                        flex: 1,
+                        width: '100%',
                       }}
                     >
-                      A CONTINUACIÓN EN EL ESCENARIO
-                    </div>
-                    <div
-                      style={{
-                        fontSize: '23px',
-                        fontWeight: 900,
-                        color: '#FFFFFF',
-                        textShadow: '0 2px 10px rgba(0,0,0,0.95)',
-                        lineHeight: 1.1,
-                      }}
-                    >
-                      {countdownSinger}
-                    </div>
-                    <div
-                      style={{
-                        fontSize: '16px',
-                        fontWeight: 800,
-                        color: '#FFB830',
-                        textShadow: '0 2px 8px rgba(0,0,0,0.95)',
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                        whiteSpace: 'nowrap',
-                        maxWidth: '100%',
-                      }}
-                    >
-                      {countdownTitle}
+                      <div
+                        style={{
+                          fontSize: '11.5px',
+                          letterSpacing: '1.5px',
+                          textTransform: 'uppercase',
+                          color: '#F5C76B',
+                          fontWeight: 800,
+                          textShadow: '0 2px 8px rgba(0,0,0,0.95)',
+                        }}
+                      >
+                        A CONTINUACIÓN EN EL ESCENARIO
+                      </div>
+                      <div
+                        style={{
+                          fontSize: '23px',
+                          fontWeight: 900,
+                          color: '#FFFFFF',
+                          textShadow: '0 2px 10px rgba(0,0,0,0.95)',
+                          lineHeight: 1.1,
+                          maxWidth: '100%',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
+                        {countdownSinger}
+                      </div>
+                      <div
+                        style={{
+                          fontSize: '16px',
+                          fontWeight: 800,
+                          color: '#FFB830',
+                          textShadow: '0 2px 8px rgba(0,0,0,0.95)',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap',
+                          maxWidth: '100%',
+                        }}
+                      >
+                        {countdownTitle}
+                      </div>
                     </div>
                     <div
                       style={{
                         fontSize: '25px',
                         fontWeight: 900,
                         color: '#FF9E2C',
-                        fontFamily: 'var(--font-mono)',
+                        fontFamily: 'Georgia, Cambria, "Times New Roman", serif',
+                        letterSpacing: '2px',
+                        lineHeight: 1,
                         textShadow: '0 2px 12px rgba(0,0,0,0.98), 0 0 12px rgba(255,158,44,0.45)',
-                        marginTop: '2px',
                       }}
                     >
                       {formatCountdownMMSS(publicOverlay.countdownSec ?? 0)}
                     </div>
                   </>
-                ) : isSessionActive ? (
+                ) : effectiveSessionActive ? (
                   <div
                     style={{
                       display: 'flex',
@@ -536,111 +719,28 @@ export const CenterMonitorColumn: React.FC<CenterMonitorColumnProps> = ({
                   >
                     <div
                       style={{
-                        fontSize: '26px',
+                        fontSize: '25px',
                         fontWeight: 900,
                         color: '#FFFFFF',
                         textShadow: '0 3px 14px rgba(0,0,0,0.96)',
-                        letterSpacing: '0.02em',
+                        lineHeight: 1.15,
                       }}
                     >
                       Solicita tu canción
                     </div>
                     <div
                       style={{
-                        fontSize: '14px',
-                        fontWeight: 700,
+                        fontSize: '13.5px',
+                        fontWeight: 600,
                         color: '#F5C76B',
                         textShadow: '0 2px 10px rgba(0,0,0,0.95)',
                       }}
                     >
-                      {nextQueuedItem
-                        ? `Cola lista (${nextQueuedItem.singer?.displayName}) • Pulsa "Lanzar / Iniciar" para el conteo`
-                        : 'Escenario Katakana abierto'}
+                      ¡El escenario de Katakana Karaoke está abierto!
                     </div>
                   </div>
-                ) : (
-                  <div
-                    style={{
-                      display: 'flex',
-                      flexDirection: 'column',
-                      alignItems: 'center',
-                      gap: '10px',
-                    }}
-                  >
-                    <div
-                      style={{
-                        fontSize: '16px',
-                        fontWeight: 800,
-                        color: '#F5C76B',
-                        textShadow: '0 2px 10px rgba(0,0,0,0.95)',
-                      }}
-                    >
-                      Consola limpia y lista
-                    </div>
-                    <button
-                      type="button"
-                      className="btn btn-surf"
-                      onClick={onStartSession}
-                      style={{
-                        fontFamily: 'var(--font-sans)',
-                        fontSize: '16px',
-                        fontWeight: 900,
-                        padding: '8px 18px',
-                      }}
-                    >
-                      <Power size={18} />
-                      Iniciar Sesión
-                    </button>
-                  </div>
-                )}
+                ) : null}
               </div>
-            </div>
-          )}
-
-          {/* Indicador para pistas de solo audio */}
-          {isVideoVisible && isAudioOnly && (
-            <div
-              style={{
-                position: 'absolute',
-                inset: 0,
-                backgroundColor: 'rgba(21, 21, 21, 0.92)',
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: '#f6efe0',
-                padding: '16px',
-                textAlign: 'center',
-              }}
-            >
-              <div style={{ fontSize: '22px', fontWeight: 800, color: 'var(--accent-surf)' }}>
-                {cleanActiveTitle}
-              </div>
-              <div style={{ fontSize: '15px', marginTop: '4px', opacity: 0.85 }}>
-                Pista de Audio ({preparedTrack?.extension?.toUpperCase()})
-              </div>
-            </div>
-          )}
-
-          {/* Mensaje rápido superpuesto también en vídeo activo */}
-          {isVideoVisible && publicOverlay.quickMessage && (
-            <div
-              style={{
-                position: 'absolute',
-                bottom: '10px',
-                left: '10px',
-                right: '10px',
-                backgroundColor: 'rgba(21, 21, 21, 0.86)',
-                border: '2px solid var(--accent-surf)',
-                borderRadius: '8px',
-                padding: '6px 12px',
-                color: '#ffffff',
-                fontSize: '15px',
-                fontWeight: 700,
-                textAlign: 'center',
-              }}
-            >
-              {publicOverlay.quickMessage}
             </div>
           )}
         </div>

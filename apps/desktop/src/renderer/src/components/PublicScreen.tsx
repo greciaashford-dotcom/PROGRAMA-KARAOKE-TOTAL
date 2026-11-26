@@ -2,19 +2,15 @@ import React, { useState, useEffect, useRef } from 'react';
 import { PlaybackSnapshotDTO, PlaybackStatus, QueueItemDTO } from '@karaoke/contracts';
 import { PublicOverlayStateDTO } from '../../../preload/types.js';
 import { cleanDisplayTitle, formatCountdownMMSS } from '../utils/title-cleaner.js';
-import { Disc, Pause } from 'lucide-react';
+import { Disc, Pause, Sparkles } from 'lucide-react';
 
 /**
- * Pantalla Pública Unificada — Katakana Karaoke:
- * - Usa por defecto la imagen oficial assets/fondo_katakana.png (o imagen personalizada de Configurar)
- *   para AMBAS vistas: Llamado/Anuncio y Espera/Intervalo.
- * - object-fit: cover; object-position: top center;
- * - ZONA PROHIBIDA (0% a 32% de altura): 100% libre para logo "Katakana KARAOKE", siluetas y onda dorada.
- * - ZONA LIBRE (34% a 88% de altura, 82% de ancho centrado): sin cajas negras opacas, tipografía grande con
- *   serifa (Georgia / Cambria) y text-shadow suave.
- * - Sin textos genéricos antiguos ("SESIÓN EN DIRECTO", "— Desconocido", etc.).
- * - El elemento <video> de la Pantalla Pública se mantiene silenciado (muted) para evitar eco/duplicado
- *   con el motor principal de audio + pitch-shift de la Consola del Operador.
+ * Pantalla Pública Unificada — Katakana Karaoke (100% Sincronizada con la Pantalla en Miniatura):
+ * - Usa por defecto la imagen oficial assets/fondo_katakana.png (o imagen personalizada de Configurar).
+ * - Antes de iniciar sesión (sessionActive === false): muestra el fondo general limpio.
+ * - Al iniciar sesión (sessionActive === true): muestra "Solicita tu canción".
+ * - Durante el conteo regresivo (mode === 'COUNTDOWN'): muestra cantante, canción y contador regresivo.
+ * - Durante la reproducción de vídeo: sincroniza cuadro a cuadro el vídeo, velocidad, pausa, banner inicial y mensajes.
  */
 export const PublicScreen: React.FC = () => {
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -32,13 +28,25 @@ export const PublicScreen: React.FC = () => {
 
   const [overlay, setOverlay] = useState<PublicOverlayStateDTO>({
     mode: 'IDLE',
+    sessionActive: false,
     countdownSec: null,
     singerName: null,
     songTitle: null,
     quickMessage: null,
+    isApplauseActive: false,
+    playbackSpeed: 1,
     hasCustomBackground: false,
     backgroundVersion: 0,
   });
+  const overlayRef = useRef<PublicOverlayStateDTO>(overlay);
+
+  useEffect(() => {
+    overlayRef.current = overlay;
+    if (videoRef.current && overlay.playbackSpeed) {
+      videoRef.current.playbackRate = overlay.playbackSpeed;
+      (videoRef.current as HTMLVideoElement & { preservesPitch?: boolean }).preservesPitch = true;
+    }
+  }, [overlay]);
 
   const cursorTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const introTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -74,7 +82,7 @@ export const PublicScreen: React.FC = () => {
     positionMsRef.current = snapshot.positionMs;
     setPlaybackState(snapshot.state);
 
-    if (snapshot.mediaAssetId) {
+    if (snapshot.mediaAssetId && (snapshot.state === 'PLAYING' || snapshot.state === 'PAUSED' || snapshot.state === 'READY')) {
       const url = `karaoke-media://asset/${snapshot.mediaAssetId}`;
       if (currentMediaUrlRef.current !== url) {
         currentMediaUrlRef.current = url;
@@ -87,26 +95,40 @@ export const PublicScreen: React.FC = () => {
           setShowIntroBanner(false);
         }, 5500);
       }
-    } else {
+    } else if (snapshot.state === 'STOPPED' || snapshot.state === 'IDLE' || snapshot.state === 'ENDED') {
       currentMediaUrlRef.current = null;
       setCurrentMediaUrl(null);
+      setShowIntroBanner(false);
     }
 
     if (videoRef.current) {
       videoRef.current.muted = true; // Audio maestro gestionado por la Consola (evita doble sonido y aplica pitch shift)
+      const targetSpeed = overlayRef.current.playbackSpeed || 1;
+      if (videoRef.current.playbackRate !== targetSpeed) {
+        videoRef.current.playbackRate = targetSpeed;
+      }
+
       if (snapshot.state === 'PLAYING') {
         if (videoRef.current.paused) {
           videoRef.current.play().catch(() => {});
         }
         const drift = Math.abs(videoRef.current.currentTime * 1000 - snapshot.positionMs);
-        if (drift > 1200) {
+        if (drift > 300) {
           videoRef.current.currentTime = snapshot.positionMs / 1000;
         }
       } else if (snapshot.state === 'PAUSED') {
         if (!videoRef.current.paused) {
           videoRef.current.pause();
         }
-      } else if (snapshot.state === 'STOPPED' || snapshot.state === 'IDLE' || snapshot.state === 'ENDED') {
+        const drift = Math.abs(videoRef.current.currentTime * 1000 - snapshot.positionMs);
+        if (drift > 100) {
+          videoRef.current.currentTime = snapshot.positionMs / 1000;
+        }
+      } else if (
+        snapshot.state === 'STOPPED' ||
+        snapshot.state === 'IDLE' ||
+        snapshot.state === 'ENDED'
+      ) {
         videoRef.current.pause();
         videoRef.current.currentTime = 0;
       }
@@ -117,21 +139,30 @@ export const PublicScreen: React.FC = () => {
     const init = async () => {
       if (!window.karaokeAPI) return;
 
-      const volRes = await window.karaokeAPI.getVolumes();
-      if (volRes.success && volRes.data) {
-        setOverlay((prev) => ({
-          ...prev,
-          hasCustomBackground: Boolean(volRes.data.publicBackgroundPath),
-          backgroundVersion: Date.now(),
-        }));
+      // 1. Hidratar inmediatamente el estado exacto del overlay desde el proceso principal
+      const overlayRes = await window.karaokeAPI.broadcastPublicOverlay({});
+      if (overlayRes.success && overlayRes.data) {
+        setOverlay(overlayRes.data);
+        overlayRef.current = overlayRes.data;
+      } else {
+        const volRes = await window.karaokeAPI.getVolumes();
+        if (volRes.success && volRes.data) {
+          setOverlay((prev) => ({
+            ...prev,
+            hasCustomBackground: Boolean(volRes.data.publicBackgroundPath),
+            backgroundVersion: Date.now(),
+          }));
+        }
       }
 
+      // 2. Hidratar cola si hay sesión activa
       const sessionRes = await window.karaokeAPI.getCurrentSession();
       if (sessionRes.success && sessionRes.data) {
         const queueRes = await window.karaokeAPI.getQueue(sessionRes.data.id);
         if (queueRes.success) updateQueueItems(queueRes.data);
       }
 
+      // 3. Hidratar estado de reproducción y posición de vídeo actual
       const playerRes = await window.karaokeAPI.getPlayerState();
       if (playerRes.success && playerRes.data) {
         handleSnapshot(playerRes.data);
@@ -148,6 +179,7 @@ export const PublicScreen: React.FC = () => {
     });
     const unsubOverlay = window.karaokeAPI.onPublicOverlayChanged((nextOverlay) => {
       setOverlay(nextOverlay);
+      overlayRef.current = nextOverlay;
     });
 
     return () => {
@@ -161,15 +193,20 @@ export const PublicScreen: React.FC = () => {
   const handleCanPlay = () => {
     if (!videoRef.current) return;
     videoRef.current.muted = true;
+    videoRef.current.playbackRate = overlayRef.current.playbackSpeed || 1;
+    (videoRef.current as HTMLVideoElement & { preservesPitch?: boolean }).preservesPitch = true;
+
     if (videoRef.current.videoWidth === 0 && videoRef.current.videoHeight === 0) {
       setIsAudioOnlyTrack(true);
     } else {
       setIsAudioOnlyTrack(false);
     }
+
+    if (positionMsRef.current > 200) {
+      videoRef.current.currentTime = positionMsRef.current / 1000;
+    }
+
     if (playbackStateRef.current === 'PLAYING' && videoRef.current.paused) {
-      if (positionMsRef.current > 800) {
-        videoRef.current.currentTime = positionMsRef.current / 1000;
-      }
       videoRef.current.play().catch(() => {});
     }
   };
@@ -181,7 +218,12 @@ export const PublicScreen: React.FC = () => {
     ? `karaoke-media://background?v=${overlay.backgroundVersion}`
     : './assets/fondo_katakana.png';
 
-  const activeSongTitleClean = cleanDisplayTitle(currentQueueItem?.song?.title);
+  const activeSingerName =
+    overlay.singerName || currentQueueItem?.singer?.displayName || null;
+  const activeSongTitleClean = cleanDisplayTitle(
+    overlay.songTitle || currentQueueItem?.song?.title || '',
+  );
+
   const isCountdownActive = overlay.mode === 'COUNTDOWN' && overlay.countdownSec !== null;
   const displaySinger = isCountdownActive
     ? overlay.singerName || nextQueueItem?.singer?.displayName || null
@@ -202,7 +244,7 @@ export const PublicScreen: React.FC = () => {
         cursor: isCursorHidden ? 'none' : 'default',
       }}
     >
-      {/* 1. Reproducción de Vídeo a Pantalla Completa */}
+      {/* 1. Reproducción de Vídeo a Pantalla Completa Sincronizada */}
       {currentMediaUrl && (
         <video
           ref={videoRef}
@@ -254,7 +296,7 @@ export const PublicScreen: React.FC = () => {
               className={playbackState === 'PLAYING' ? 'spin' : ''}
               style={{ filter: 'drop-shadow(0 4px 16px rgba(0,0,0,0.9))' }}
             />
-            {currentQueueItem?.singer?.displayName && (
+            {activeSingerName && (
               <div
                 style={{
                   fontSize: 'clamp(28px, 3.6vw, 54px)',
@@ -263,7 +305,7 @@ export const PublicScreen: React.FC = () => {
                   textShadow: '0 4px 18px rgba(0,0,0,0.95)',
                 }}
               >
-                {currentQueueItem.singer.displayName}
+                {activeSingerName}
               </div>
             )}
             <div
@@ -281,8 +323,8 @@ export const PublicScreen: React.FC = () => {
         </div>
       )}
 
-      {/* Aviso discreto al inicio de vídeo (sin cajas opacas pesadas) */}
-      {isVideoActive && !isAudioOnlyTrack && showIntroBanner && currentQueueItem?.singer && activeSongTitleClean && (
+      {/* Aviso discreto al inicio de vídeo (5.5s) sincronizado con Pantalla en Miniatura */}
+      {isVideoActive && !isAudioOnlyTrack && showIntroBanner && activeSingerName && activeSongTitleClean && (
         <div
           style={{
             position: 'absolute',
@@ -297,7 +339,7 @@ export const PublicScreen: React.FC = () => {
             Cantado por:
           </div>
           <div style={{ fontSize: '42px', color: '#FFFFFF', fontWeight: 800, lineHeight: 1.1 }}>
-            {currentQueueItem.singer.displayName}
+            {activeSingerName}
           </div>
           <div style={{ fontSize: '30px', color: '#FFB830', fontWeight: 700, marginTop: '4px' }}>
             {activeSongTitleClean}
@@ -305,7 +347,7 @@ export const PublicScreen: React.FC = () => {
         </div>
       )}
 
-      {/* Indicador discreto de PAUSA */}
+      {/* Indicador discreto de PAUSA sincronizado con Pantalla en Miniatura */}
       {isVideoActive && playbackState === 'PAUSED' && (
         <div
           style={{
@@ -349,7 +391,7 @@ export const PublicScreen: React.FC = () => {
         </div>
       )}
 
-      {/* 2. Vista Unificada de Llamado / Anuncio y Espera / Intervalo con Fondo Oficial Katakana */}
+      {/* 2. Vista Unificada 100% Sincronizada con la Pantalla en Miniatura cuando no hay vídeo activo */}
       {!isVideoActive && (
         <div style={{ position: 'absolute', inset: 0 }}>
           <img
@@ -366,7 +408,7 @@ export const PublicScreen: React.FC = () => {
 
           {/* ZONA PROHIBIDA: 0% a 32% de altura -> 100% libre para logo Katakana KARAOKE, siluetas y onda dorada */}
 
-          {/* ZONA LIBRE: 34% a 88% de altura, 82% de ancho centrado (sin cajas negras opacas) */}
+          {/* ZONA LIBRE: 34% a 88% de altura, 82% de ancho centrado */}
           <div
             style={{
               position: 'absolute',
@@ -396,7 +438,23 @@ export const PublicScreen: React.FC = () => {
               >
                 {overlay.quickMessage}
               </div>
-            ) : displaySinger && displaySongTitle ? (
+            ) : overlay.isApplauseActive ? (
+              <div
+                style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  gap: '1.8vh',
+                  color: '#F5C76B',
+                  textShadow: '0 4px 20px rgba(0, 0, 0, 0.95)',
+                }}
+              >
+                <Sparkles size={72} />
+                <span style={{ fontSize: 'clamp(38px, 5vw, 74px)', fontWeight: 800 }}>
+                  ¡APLAUSOS EN SALA!
+                </span>
+              </div>
+            ) : isCountdownActive && displaySinger && displaySongTitle ? (
               <>
                 <div
                   style={{
@@ -409,7 +467,6 @@ export const PublicScreen: React.FC = () => {
                     width: '100%',
                   }}
                 >
-                  {/* Etiqueta superior en dorado suave (#F5C76B) */}
                   <div
                     style={{
                       fontSize: 'clamp(22px, 2.5vw, 38px)',
@@ -420,12 +477,9 @@ export const PublicScreen: React.FC = () => {
                       textShadow: '0 3px 16px rgba(0, 0, 0, 0.95)',
                     }}
                   >
-                    {isCountdownActive || playbackState === 'READY'
-                      ? 'A CONTINUACIÓN EN EL ESCENARIO'
-                      : 'Cantado por:'}
+                    A CONTINUACIÓN EN EL ESCENARIO
                   </div>
 
-                  {/* Nombre del cantante protagonista muy grande */}
                   <div
                     style={{
                       fontSize: 'clamp(46px, 6.2vw, 96px)',
@@ -442,7 +496,6 @@ export const PublicScreen: React.FC = () => {
                     {displaySinger}
                   </div>
 
-                  {/* Título limpio sin códigos, máx. 2 líneas */}
                   <div
                     style={{
                       fontSize: 'clamp(34px, 4.4vw, 68px)',
@@ -461,8 +514,7 @@ export const PublicScreen: React.FC = () => {
                   </div>
                 </div>
 
-                {/* Contador regresivo (76% a 88% de altura de pantalla -> bloque inferior dentro de Zona Libre) */}
-                {isCountdownActive && overlay.countdownSec !== null && (
+                {overlay.countdownSec !== null && (
                   <div
                     style={{
                       fontSize: 'clamp(48px, 6.5vw, 96px)',
@@ -479,7 +531,7 @@ export const PublicScreen: React.FC = () => {
                   </div>
                 )}
               </>
-            ) : (
+            ) : overlay.sessionActive ? (
               <div
                 style={{
                   display: 'flex',
@@ -510,7 +562,7 @@ export const PublicScreen: React.FC = () => {
                   ¡El escenario de Katakana Karaoke está abierto!
                 </div>
               </div>
-            )}
+            ) : null}
           </div>
         </div>
       )}

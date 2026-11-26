@@ -48,6 +48,8 @@ export interface PublicOverlayStateDTO {
   singerName: string | null;
   songTitle: string | null;
   quickMessage: string | null;
+  isApplauseActive?: boolean;
+  playbackSpeed?: number;
   hasCustomBackground: boolean;
   backgroundVersion: number;
 }

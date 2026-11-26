@@ -109,6 +109,8 @@ export const App: React.FC = () => {
     singerName: null,
     songTitle: null,
     quickMessage: null,
+    isApplauseActive: false,
+    playbackSpeed: 1,
     hasCustomBackground: false,
     backgroundVersion: 0,
   });
@@ -194,6 +196,10 @@ export const App: React.FC = () => {
       return next;
     });
   }, []);
+
+  useEffect(() => {
+    broadcastOverlayState({ isApplauseActive, playbackSpeed });
+  }, [isApplauseActive, playbackSpeed, broadcastOverlayState]);
 
   const clearCountdownTimer = useCallback(() => {
     if (countdownTimerRef.current) {
@@ -1222,9 +1228,11 @@ export const App: React.FC = () => {
       setIsPublicScreenOpen(res.data.isOpen);
       showNotice(res.data.isOpen ? 'Pantalla Pública abierta.' : 'Pantalla Pública cerrada.');
       if (res.data.isOpen) {
-        setTimeout(() => {
-          window.karaokeAPI?.broadcastPublicOverlay(publicOverlay).catch(() => {});
-        }, 400);
+        for (const delay of [150, 450, 900]) {
+          setTimeout(() => {
+            window.karaokeAPI?.broadcastPublicOverlay(publicOverlay).catch(() => {});
+          }, delay);
+        }
       }
     }
   };

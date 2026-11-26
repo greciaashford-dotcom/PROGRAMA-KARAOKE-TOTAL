@@ -423,17 +423,17 @@ export function registerPlayerHandlers(
     },
   );
 
-  // 6. Actualización periódica de progreso/tiempo desde el motor de reproducción
+  // 6. Actualización periódica de progreso/tiempo desde el motor de reproducción (sincroniza Pantalla Pública en tiempo real)
   ipcMain.handle(
     IPC_CHANNELS.PLAYER_UPDATE_PROGRESS,
     async (_event, payload: { positionMs: number; durationMs?: number }) => {
       try {
-        return ok(
-          playbackRepo.updatePlaybackState({
-            positionMs: payload.positionMs,
-            durationMs: payload.durationMs,
-          }),
-        );
+        const snapshot = playbackRepo.updatePlaybackState({
+          positionMs: payload.positionMs,
+          durationMs: payload.durationMs,
+        });
+        broadcast(IPC_CHANNELS.EVENT_PLAYER_STATE_CHANGED, snapshot);
+        return ok(snapshot);
       } catch (error) {
         console.error('Error actualizando progreso de reproducción:', error);
         return err(ErrorCode.DATABASE_ERROR, 'Error actualizando progreso.');
